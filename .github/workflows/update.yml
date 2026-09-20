@@ -1,11 +1,19 @@
 name: Refresh dashboard
 
-# Rebuilds data/snapshot.js from the two upstream repos and publishes the site.
-# Runs daily; the manual trigger is there for when someone lands a change they
-# want reflected immediately.
+# Rebuilds data/snapshot.js from the four upstream repos and publishes the site.
+#
+# Nothing in the source repos can trigger this: a workflow only responds to
+# events in its own repository. So the schedule is the update mechanism, and the
+# dashboard is stale by up to one interval. Use workflow_dispatch when a change
+# needs to land sooner.
+#
+# The minute is deliberately not :00 -- GitHub delays scheduled runs under load
+# and drops them outright at popular times, of which the top of the hour is the
+# worst. Note also that scheduled workflows are disabled automatically after 60
+# days with no activity in this repository.
 on:
   schedule:
-    - cron: '17 6 * * *'        # 06:17 UTC daily
+    - cron: '17 * * * *'        # hourly, at 17 minutes past
   workflow_dispatch:
   push:
     branches: [main]
