@@ -1,0 +1,385 @@
+{
+  "_comment": [
+    "Hand-maintained. These three lists cannot be derived from the repo or the tracker:",
+    "a decision and its rejected alternative live in issue discussion, not in structured",
+    "fields. Every entry cites an issue number, and build_snapshot.py warns if a cited",
+    "issue does not exist in the tracker, so the citations cannot rot silently.",
+    "Sourced from the MOC 2.0 design document reconstructed from those same issues."
+  ],
+  "decisions": [
+    {
+      "date": "2026-07-27",
+      "title": "Hub plus Hosted Control Planes",
+      "area": "Architecture",
+      "rejected": "A dedicated control plane per cluster",
+      "issue": 391,
+      "why": "Hardware efficiency and fast cluster creation; the hub becomes the critical control point"
+    },
+    {
+      "date": "2026-07-27",
+      "title": "Two-stage build: dev on ESI, prod on dedicated hardware",
+      "area": "Delivery",
+      "rejected": "Wait for RHOSO 18",
+      "issue": 311,
+      "why": "RHOSO was not ready and the stack had to be proven quickly"
+    },
+    {
+      "date": "2026-07-29",
+      "title": "Keycloak as the sole IdP, federated via CILogon",
+      "area": "Identity",
+      "rejected": "A separate IdP for the NIST environment",
+      "issue": 282,
+      "why": "One identity platform; a single option holds under 800-171"
+    },
+    {
+      "date": "2026-08-03",
+      "title": "Keycloak on AWS EKS in the MOC account, as a pilot",
+      "area": "Identity",
+      "rejected": "GovCloud, on-premises, ECS, EC2",
+      "issue": 359,
+      "why": "The IdP must survive a cluster outage; reuses Kubernetes skills; compliance deferred"
+    },
+    {
+      "date": "2026-08-17",
+      "title": "Argo CD + Helm + ACM Placements instead of ai-ivp",
+      "area": "Configuration",
+      "rejected": "The consultants' Ansible-driven pattern",
+      "issue": 51,
+      "why": "Simpler and offers more control over what is deployed"
+    },
+    {
+      "date": "2026-08-17",
+      "title": "Only pre-registered users may authenticate, on every cluster",
+      "area": "Identity",
+      "rejected": "The MOC 1.0 model: anyone may log in, with no privileges",
+      "issue": 400,
+      "why": "NIST requires it and there is a single login front end"
+    },
+    {
+      "date": "2026-08-17",
+      "title": "S3 through an in-cluster reverse proxy on a Multus storage network",
+      "area": "Storage",
+      "rejected": "Host routing, per-namespace attachments, default-gateway routing",
+      "issue": 404,
+      "why": "Keeps the fast storage path with minimal tenant configuration and no route leakage"
+    },
+    {
+      "date": "2026-08-17",
+      "title": "No RDMA or SR-IOV for the Open Accelerator",
+      "area": "Network",
+      "rejected": "Configuring the NIC operators",
+      "issue": 421,
+      "why": "Not needed by current workloads; the capability stays available but unenabled"
+    },
+    {
+      "date": "2026-08-25",
+      "title": "Tenant projects from a Git values file, not ColdFront",
+      "area": "Tenancy",
+      "rejected": "ColdFront, as used in MOC 1.0",
+      "issue": 438,
+      "why": "Saves engineering time for the NIST build"
+    },
+    {
+      "date": "2026-08-26",
+      "title": "Three-tier ANP / NetworkPolicy / BANP tenant isolation",
+      "area": "Network",
+      "rejected": "A single admin policy",
+      "issue": 441,
+      "why": "One tier cannot express both an admin guarantee and tenant flexibility"
+    },
+    {
+      "date": "2026-08-31",
+      "title": "HAProxy on the firewall for hosted-cluster endpoints",
+      "area": "Network",
+      "rejected": "MetalLB plus port forwarding everywhere",
+      "issue": 422,
+      "why": "Simpler for services that are NodePorts anyway"
+    },
+    {
+      "date": "2026-09-15",
+      "title": "Bill the Open Accelerator by allocation",
+      "area": "Billing",
+      "rejected": "Usage-based metering",
+      "issue": 455,
+      "why": "Market norm; the cost is incurred whether or not the GPU is busy"
+    }
+  ],
+  "discoveries": [
+    {
+      "date": "2026-08-26",
+      "title": "Cross-namespace isolation bypassed using FQDN",
+      "severity": "critical",
+      "status": "fixed",
+      "issue": 441,
+      "found_by": "UAT harness",
+      "detail": "A tenant could reach another tenant's service by its full DNS name. Short names only appeared to fail because of DNS search paths, not because anything was blocked. Fixed with the three-tier policy design."
+    },
+    {
+      "date": "2026-09-08",
+      "title": "Billing metric absent under Hosted Control Planes",
+      "severity": "serious",
+      "status": "open",
+      "issue": 481,
+      "found_by": "Observability rollout",
+      "detail": "kube_pod_resource_request is published only by the kube-scheduler, which under HCP runs on the hub rather than in the cluster. The workload cluster's Prometheus cannot see it, so invoice data is missing. Forces the 4.22 upgrade."
+    },
+    {
+      "date": "2026-09-14",
+      "title": "Namespace policy blocked all internet egress",
+      "severity": "serious",
+      "status": "fixed",
+      "issue": 491,
+      "found_by": "User report",
+      "detail": "The first tenant NetworkPolicy allowed egress only within the namespace, silently breaking pip, git and Go module downloads. Fixed by allowing 0.0.0.0/0 except the pod and service CIDRs."
+    },
+    {
+      "date": "2026-08-21",
+      "title": "ConnectX-7 NICs are the non-crypto variant",
+      "severity": "warning",
+      "status": "open",
+      "issue": 351,
+      "found_by": "Hardware audit",
+      "detail": "No hardware TLS offload, so the CPU pays for all encryption in transit. Matters for NIST, where encryption is mandatory."
+    },
+    {
+      "date": "2026-09-11",
+      "title": "Logout does not invalidate the Keycloak session",
+      "severity": "warning",
+      "status": "open",
+      "issue": 487,
+      "found_by": "Onboarding",
+      "detail": "The console session ends but the SSO session persists, so the next login is silent. Needs logoutRedirect pointed at Keycloak's end-session endpoint."
+    },
+    {
+      "date": "2026-09-16",
+      "title": "Object storage proxy deployed on only one cluster",
+      "severity": "warning",
+      "status": "open",
+      "issue": 500,
+      "found_by": "Platform review",
+      "detail": "Centralised multi-cluster observability needs S3 on the hubs, which needs the proxy there first."
+    }
+  ],
+  "timeline": [
+    {
+      "section": "Deciding",
+      "label": "Consultant review, requirements",
+      "start": "2026-07-08",
+      "end": "2026-07-27"
+    },
+    {
+      "section": "Deciding",
+      "label": "RFCs 01–12 created",
+      "start": "2026-07-20",
+      "end": null
+    },
+    {
+      "section": "Deciding",
+      "label": "OAC architecture written",
+      "start": "2026-07-27",
+      "end": null
+    },
+    {
+      "section": "Deciding",
+      "label": "RFC 01 identity approved",
+      "start": "2026-07-29",
+      "end": null
+    },
+    {
+      "section": "Clearing",
+      "label": "VPN, bastion, ESI networks",
+      "start": "2026-07-28",
+      "end": "2026-08-06"
+    },
+    {
+      "section": "Clearing",
+      "label": "MOC 1.0 paused",
+      "start": "2026-07-31",
+      "end": null
+    },
+    {
+      "section": "Clearing",
+      "label": "Stage 2 hardware claimed",
+      "start": "2026-08-03",
+      "end": "2026-08-18"
+    },
+    {
+      "section": "Stage 1 (dev)",
+      "label": "Dev hub cluster",
+      "start": "2026-08-06",
+      "end": "2026-08-19"
+    },
+    {
+      "section": "Stage 1 (dev)",
+      "label": "Dev workload, H100s, AI stack",
+      "start": "2026-08-19",
+      "end": "2026-08-24"
+    },
+    {
+      "section": "Stage 2 (prod)",
+      "label": "Keycloak on AWS EKS",
+      "start": "2026-08-03",
+      "end": "2026-08-26"
+    },
+    {
+      "section": "Stage 2 (prod)",
+      "label": "Prod hub and workload0",
+      "start": "2026-08-24",
+      "end": "2026-08-31"
+    },
+    {
+      "section": "Stage 2 (prod)",
+      "label": "OAC launch",
+      "start": "2026-09-01",
+      "end": null
+    },
+    {
+      "section": "Operating",
+      "label": "Freeze and recorded demo",
+      "start": "2026-09-04",
+      "end": "2026-09-08"
+    },
+    {
+      "section": "Operating",
+      "label": "Three startup groups onboarded",
+      "start": "2026-09-09",
+      "end": "2026-09-16"
+    },
+    {
+      "section": "In parallel",
+      "label": "RHOSO 18 (not yet in production)",
+      "start": "2026-07-27",
+      "end": "2026-09-19"
+    },
+    {
+      "section": "In parallel",
+      "label": "NIST scoping and gap analysis",
+      "start": "2026-08-09",
+      "end": "2026-09-19"
+    }
+  ],
+  "timeline_marker": {
+    "date": "2026-09-01",
+    "label": "Sept 1 deadline"
+  },
+  "topology": {
+    "_comment": "Every block must be grounded: either \"grounding\": \"repo\" (it is visible in oac-apps) or \"issue\": <n> (it is described in the tracker). build_snapshot.py drops any block that has neither and warns. Blocks whose connections are not described anywhere carry \"connections\": \"unknown\" and are drawn unconnected.",
+    "external": [
+      {
+        "id": "cilogon",
+        "label": "CILogon",
+        "sub": "academic federation",
+        "kind": "idp",
+        "issue": 436,
+        "connects_to": "keycloak"
+      },
+      {
+        "id": "google",
+        "label": "Google",
+        "sub": "interim, until CILogon was approved",
+        "kind": "idp",
+        "issue": 437,
+        "connects_to": "keycloak"
+      }
+    ],
+    "aws": [
+      {
+        "id": "keycloak",
+        "label": "Keycloak",
+        "sub": "sso.massopen.cloud · realm moc",
+        "kind": "svc",
+        "grounding": "repo",
+        "issue": 315
+      },
+      {
+        "id": "secrets",
+        "label": "AWS Secrets Manager",
+        "sub": "ClusterSecretStore aws-secrets-manager",
+        "kind": "store",
+        "grounding": "repo"
+      },
+      {
+        "id": "route53",
+        "label": "Route 53",
+        "sub": "zones from external-dns values",
+        "kind": "store",
+        "grounding": "repo",
+        "issue": 431
+      },
+      {
+        "id": "coldfront",
+        "label": "ColdFront",
+        "sub": "deployed, not used for OAC",
+        "kind": "svc",
+        "issue": 438,
+        "connections": "unknown"
+      }
+    ],
+    "datacenter": {
+      "label": "MGHPCC · MOC networks",
+      "sub": "MOC networks in the MGHPCC data centre",
+      "edge": [
+        {
+          "id": "haproxy",
+          "label": "Load balancer on the firewall",
+          "sub": "publishes hosted-cluster API and ingress",
+          "issue": 422
+        },
+        {
+          "id": "bastion",
+          "label": "Bastion host",
+          "sub": "built for OAC",
+          "issue": 326,
+          "connections": "unknown"
+        }
+      ],
+      "storage": {
+        "id": "pure",
+        "label": "Pure FlashBlade",
+        "sub": "route target in portworx values",
+        "grounding": "repo",
+        "issue": 331
+      }
+    }
+  },
+  "hardware_profiles": {
+    "_comment": "GPUs per node is a property of the machine and is NOT recorded in oac-apps. Set \"gpus\": null when the real number is not known - the dashboard will show the pool as 'needs data' and exclude it from GPU totals rather than guess. Fill these in from the inventory in CCI-MOC/open-accelerator-infra.",
+    "fc830": {
+      "label": "Dell FC830",
+      "gpus": 0,
+      "kind": "cpu",
+      "source": "CPU blade, no GPUs"
+    },
+    "fc430": {
+      "label": "Dell FC430",
+      "gpus": 0,
+      "kind": "cpu",
+      "source": "CPU blade, no GPUs"
+    },
+    "lenovo-sd665nv3-h100": {
+      "label": "Lenovo SD665 V3 · H100",
+      "gpus": 4,
+      "kind": "gpu",
+      "source": "confirmed: oac-dev-workload0 is 2 nodes / 8 GPUs"
+    },
+    "lenovo-sd650nv2-a100": {
+      "label": "Lenovo SD650 V2 · A100",
+      "gpus": null,
+      "kind": "gpu",
+      "source": "NOT KNOWN - fill in GPUs per node"
+    }
+  },
+  "hub_nodes": {
+    "_comment": "Hub clusters are installed with the agent-based installer, so their own node counts are NOT in oac-apps (only hosted clusters declare nodePools there). Fill these in from CCI-MOC/open-accelerator-infra; null renders as 'needs data' rather than 0.",
+    "oac-prod-infra": {
+      "control_plane": null,
+      "workers": null,
+      "source": "NOT KNOWN - from open-accelerator-infra inventory"
+    },
+    "oac-dev-infra": {
+      "control_plane": null,
+      "workers": null,
+      "source": "NOT KNOWN - compact cluster, control plane and workers colocated"
+    }
+  }
+}

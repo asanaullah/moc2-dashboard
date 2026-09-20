@@ -1,0 +1,391 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MOC 2.0 — Platform State</title>
+<meta name="description" content="Current state of the MOC 2.0 / Open Accelerator platform: clusters, nodes, operators, tenancy, design decisions and capacity.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Condensed:wght@500;600;700&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&display=swap">
+<link rel="stylesheet" href="assets/style.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><rect width='16' height='16' rx='3' fill='%230D6874'/><rect x='3' y='7' width='3' height='6' fill='white'/><rect x='7' y='4' width='3' height='9' fill='white'/><rect x='11' y='9' width='2' height='4' fill='white'/></svg>">
+</head>
+<body>
+
+<header class="topbar">
+  <div class="topbar-in">
+    <div class="brand">
+      <h1>MOC 2.0 · Platform State</h1>
+      <span class="tag">Open Accelerator</span>
+    </div>
+    <nav class="nav" aria-label="Sections">
+      <a href="#overview">Overview</a>
+      <a href="#architecture">Architecture</a>
+      <a href="#clusters-sec">Clusters</a>
+      <a href="#timeline">Timeline</a>
+      <a href="#governance">Decisions</a>
+      <a href="#activity">Activity</a>
+      <a href="#discoveries">Discoveries</a>
+      <a href="#identity">Identity</a>
+      <a href="#networks">Networks</a>
+      <a href="#capacity">Capacity</a>
+      <a href="#reference">Reference</a>
+    </nav>
+    <div class="freshness" title="Last data refresh">
+      <span class="dot" id="freshDot"></span>
+      <span>updated <b id="genAt">—</b></span>
+    </div>
+    <button class="iconbtn" id="themeBtn" type="button" title="Toggle light / dark">Theme</button>
+  </div>
+</header>
+
+<div class="shell">
+
+  <div class="banner" id="banner"></div>
+
+  <!-- ============ overview ============ -->
+  <section id="overview">
+    <div class="sec-head">
+      <h2>At a glance</h2>
+      <p class="hint">From <span id="srcApps">—</span> and <span id="srcIssues">—</span></p>
+    </div>
+    <details class="info">
+      <summary><span class="i">i</span> What this is</summary>
+      <div class="info-body">
+        <p><b>What</b>Eight roll-ups computed from the cluster records further down the page.</p>
+        <p><b>Why</b>The platform's state is spread across five repositories, so a reader needs one place that says how big it is. Every number here is derived from the detail below rather than typed in, because a hand-maintained total drifts from the thing it summarises the first time anyone edits one and not the other.</p>
+        <p><b>Look for</b>Tiles labelled <b>partial</b>. That means a figure is incomplete, not that it is small — a value no source records is excluded from the total rather than counted as zero.</p>
+      </div>
+    </details>
+    <dl class="tiles" id="tiles"></dl>
+  </section>
+
+  <!-- ============ architecture ============ -->
+  <section id="architecture">
+    <div class="sec-head">
+      <h2>Architecture</h2>
+    </div>
+    <details class="info">
+      <summary><span class="i">i</span> What this is</summary>
+      <div class="info-body">
+        <p><b>What</b>The connection map: identity sources, AWS, the edge, the hubs, the workload clusters and storage.</p>
+        <p><b>Why</b>Two constraints shaped this. Hardware was scarce — a third of the GPUs failed before the build started — so rather than spend three machines on a control plane per cluster, every workload cluster's control plane runs as pods on a shared hub. And the identity provider sits outside the data centre, because the thing that lets you log in must not depend on the thing you log in to fix. The diagram exists to make both visible at once.</p>
+        <p><b>Look for</b>Boxes marked <b>NO LINKS IN SOURCES</b> — real components whose connections nothing records, drawn unconnected rather than wired up by guesswork. Also any <b>?</b>, and the absence of control-plane nodes on the workload clusters: that absence is the architecture working.</p>
+      </div>
+    </details>
+    <div class="chartwrap">
+      <div id="arch"></div>
+      <div class="legend" id="archLegend"></div>
+    </div>
+  </section>
+
+  <!-- ============ clusters ============ -->
+  <section id="clusters-sec">
+    <div class="sec-head">
+      <h2>Clusters</h2>
+    </div>
+    <details class="info">
+      <summary><span class="i">i</span> What this is</summary>
+      <div class="info-body">
+        <p><b>What</b>Each cluster as declared in Git — node pools, components, tenant projects, isolation tiers, VLANs and machines.</p>
+        <p><b>Why</b>Under hosted control planes a workload cluster owns only worker nodes. Its API server, etcd and scheduler are pods in a <code>clusters-&lt;name&gt;</code> namespace on its hub, which is why a workload cluster's size is a node-pool count and its control plane appears in the hub's namespace list instead. Hubs are ordinary clusters and do have their own nodes, but they are installed by a different route and so are declared in a different repository.</p>
+        <p><b>Look for</b>GPU counts marked <b>needs data</b>; the source line under a hub's node count; and whether the node-pool replicas in <code>oac-apps</code> agree with the machine inventory — two independent sources counting the same thing.</p>
+      </div>
+    </details>
+    <div class="clusters" id="clusters"></div>
+  </section>
+
+  <!-- ============ timeline ============ -->
+  <section id="timeline">
+    <div class="sec-head">
+      <h2>Timeline</h2>
+    </div>
+    <details class="info">
+      <summary><span class="i">i</span> What this is</summary>
+      <div class="info-body">
+        <p><b>What</b>Programme phases from 2026-07-08 to 2026-09-19, against the September 1 deadline.</p>
+        <p><b>Why</b>The deadline was fixed and the hardware came from decommissioning the previous platform, so building could not begin until the old cloud was switched off. That sequencing is why the shape looks the way it does: roughly six weeks of deciding, then about twelve days of building.</p>
+        <p><b>Look for</b>Bars still running to the right edge — work that never landed inside the window, which is where the next phase inherits its risk.</p>
+      </div>
+    </details>
+    <div class="chartwrap">
+      <h3>2026-07-08 → 2026-09-19</h3>
+      <p class="csub">Diamonds are milestones.</p>
+      <details class="info sub">
+  <summary><span class="i">i</span></summary>
+  <div class="info-body">
+    <p><b>What</b>Programme phases as bars, milestones as diamonds, against the deadline.</p>
+    <p><b>Why</b>Dates are curated, since no repository records when a phase began. The value is the proportion: how little of the window was spent building.</p>
+    <p><b>Look for</b>Bars that cross the deadline line and keep going.</p>
+  </div>
+</details>
+      <div id="gantt"></div>
+      <div class="legend" id="ganttLegend"></div>
+    </div>
+  </section>
+
+  <!-- ============ governance ============ -->
+  <section id="governance">
+    <div class="sec-head">
+      <h2>Decisions</h2>
+      <p class="hint">RFC status from the tracker.</p>
+    </div>
+    <details class="info">
+      <summary><span class="i">i</span> What this is</summary>
+      <div class="info-body">
+        <p><b>What</b>RFC status derived from issue state, and the log of decisions already taken with the alternative each one beat.</p>
+        <p><b>Why</b>Several decisions were explicitly provisional — hosting identity in a commercial AWS account was recorded as a pilot, with compliance to be worked out later. A decision recorded without its rejected alternative cannot be re-evaluated when the constraints change, and the constraints are about to change, so both halves are kept.</p>
+        <p><b>Look for</b>Items sitting in <b>Under review</b> with old dates, and decisions whose stated rationale was time-boxed rather than permanent.</p>
+      </div>
+    </details>
+    <div class="board" id="board"></div>
+
+    <div class="sec-head" style="margin-top:24px">
+      <h2 style="font-size:16px">Decision log</h2>
+    
+      <details class="info sub">
+  <summary><span class="i">i</span></summary>
+  <div class="info-body">
+    <p><b>What</b>Decisions already taken, newest first, each with the alternative it beat.</p>
+    <p><b>Why</b>Hand-maintained, because a decision and its rejected option live in issue prose, not in any structured field. Every row cites an issue number that the generator verifies exists, so the citations cannot rot silently.</p>
+    <p><b>Look for</b>The <b>Instead of</b> column &mdash; that is the thing to revisit when a constraint changes.</p>
+  </div>
+</details>
+    </div>
+    <div id="decisions"></div>
+  </section>
+
+  <!-- ============ activity ============ -->
+  <section id="activity">
+    <div class="sec-head">
+      <h2>Activity</h2>
+    </div>
+    <details class="info">
+      <summary><span class="i">i</span> What this is</summary>
+      <div class="info-body">
+        <p><b>What</b>Issues opened and closed each week in the tracker.</p>
+        <p><b>Why</b>Issue flow is the only continuous record of where effort actually went; the repositories show what was built but not what it cost to decide. The July spike is requirements work, not building.</p>
+        <p><b>Look for</b>Weeks where opened far exceeds closed. Roughly two thirds of the tracker is still open, and that backlog is where the compliance work now lives.</p>
+      </div>
+    </details>
+    <div class="chartwrap">
+      <h3>Issues per week</h3>
+      <details class="info sub">
+  <summary><span class="i">i</span></summary>
+  <div class="info-body">
+    <p><b>What</b>Issues opened and closed per week, from issue timestamps.</p>
+    <p><b>Why</b>Derived directly from <code>created_at</code> and <code>closed_at</code>, so it cannot disagree with the tracker.</p>
+    <p><b>Look for</b>The gap between the two bars, week by week.</p>
+  </div>
+</details>
+      <div id="issueChart"></div>
+      <div class="legend">
+        <span><b style="background:var(--s1)"></b>Opened</span>
+        <span><b style="background:var(--s2)"></b>Closed</span>
+      </div>
+    </div>
+    <div class="sec-head" style="margin-top:20px">
+      <h2 style="font-size:16px">Recent issues</h2>
+    
+      <details class="info sub">
+  <summary><span class="i">i</span></summary>
+  <div class="info-body">
+    <p><b>What</b>The most recently updated issues in the tracker.</p>
+    <p><b>Why</b>The weekly chart shows volume; this shows what is being touched right now, which is a different question.</p>
+    <p><b>Look for</b>Compliance-labelled work entering the list, and long-open items resurfacing.</p>
+  </div>
+</details>
+    </div>
+    <div id="recentIssues"></div>
+  </section>
+
+  <!-- ============ discoveries ============ -->
+  <section id="discoveries">
+    <div class="sec-head">
+      <h2>Discoveries</h2>
+    </div>
+    <details class="info">
+      <summary><span class="i">i</span> What this is</summary>
+      <div class="info-body">
+        <p><b>What</b>Defects and surprises found during the build, with current status, each citing an issue.</p>
+        <p><b>Why</b>The expensive failures were consequences of the architecture rather than faults in it. Consolidating control planes onto hubs moved the scheduler out of the workload cluster — and took the metric the invoices are built from with it. Keeping these listed is what stops a decision's cost from being forgotten once the decision looks settled.</p>
+        <p><b>Look for</b>Anything still <b>Open</b>, especially <b>serious</b> or <b>critical</b>, and whether a fix created its own follow-on problem.</p>
+      </div>
+    </details>
+    <div class="finds" id="finds"></div>
+  </section>
+
+  <!-- ============ identity ============ -->
+  <section id="identity">
+    <div class="sec-head">
+      <h2>Identity</h2>
+      <p class="hint">From <code>moc-keycloak</code>.</p>
+    </div>
+    <details class="info">
+      <summary><span class="i">i</span> What this is</summary>
+      <div class="info-body">
+        <p><b>What</b>Realm settings, federated providers, per-cluster OIDC clients, groups and authentication flows, read from the Terraform.</p>
+        <p><b>Why</b>MOC serves users from many institutions it does not control, so it federates rather than holding passwords. But federation alone would let anyone with a valid university account in, so the first-broker flow links only accounts that already exist — the platform refuses unknown users by construction rather than by policy document. The realm flags are that intent expressed as configuration.</p>
+        <p><b>Look for</b>Clients marked <b>no cluster</b> — a cluster being prepared before its configuration exists. Values shown as <b>variable</b>, which the repository alone cannot resolve. And the realm flags: registration disabled, email login disabled, duplicate emails disallowed.</p>
+      </div>
+    </details>
+    <div id="idWrap">
+      <div class="sec-head" style="margin-top:4px"><h2 style="font-size:15px">Realm</h2><p class="hint" id="idRealmName"></p>
+      <details class="info sub">
+        <summary><span class="i">i</span></summary>
+        <div class="info-body">
+          <p><b>What</b>The Keycloak realm&rsquo;s security-relevant settings.</p>
+          <p><b>Why</b>These flags are the access policy expressed as configuration rather than as a document: registration disabled, email login disabled, duplicate emails disallowed. A policy written only in prose cannot be checked; these can.</p>
+          <p><b>Look for</b>Any flag set <b>true</b> where you expected false, and the token and session lifespans.</p>
+        </div>
+      </details>
+    </div>
+      <div id="idRealm"></div>
+      <div class="sec-head" style="margin-top:20px"><h2 style="font-size:15px">Identity providers</h2>
+      <details class="info sub">
+        <summary><span class="i">i</span></summary>
+        <div class="info-body">
+          <p><b>What</b>The federated providers configured on the realm.</p>
+          <p><b>Why</b>Federating is how a platform serves users from institutions it does not control without ever holding their passwords &mdash; the home institution authenticates, MOC receives an assertion.</p>
+          <p><b>Look for</b>Sync mode, whether email is trusted, and which first-broker flow each provider runs. That flow is what decides whether an unknown user can be created.</p>
+        </div>
+      </details>
+    </div>
+      <div id="idProviders"></div>
+      <div class="sec-head" style="margin-top:20px"><h2 style="font-size:15px">OpenShift OIDC clients</h2>
+      <details class="info sub">
+        <summary><span class="i">i</span></summary>
+        <div class="info-body">
+          <p><b>What</b>One OAuth client per cluster, with its redirect URI and the secret path.</p>
+          <p><b>Why</b>Each cluster gets its own client so a credential taken from one cluster cannot be replayed against another. The secret itself stays in AWS Secrets Manager; only the reference is in Git.</p>
+          <p><b>Look for</b>Clients whose cluster does not exist in <code>oac-apps</code> &mdash; a cluster being prepared ahead of its configuration.</p>
+        </div>
+      </details>
+    </div>
+      <div id="idClients"></div>
+      <div class="sec-head" style="margin-top:20px"><h2 style="font-size:15px">Groups</h2>
+      <details class="info sub">
+        <summary><span class="i">i</span></summary>
+        <div class="info-body">
+          <p><b>What</b>Groups defined in the realm.</p>
+          <p><b>Why</b>OpenShift RBAC binds to group membership, so a tenant project&rsquo;s permissions begin as a group here and are granted in the cluster by the <code>user-projects</code> chart.</p>
+          <p><b>Look for</b>Groups that no declared project references &mdash; either an administrative role, or a project that has gone away.</p>
+        </div>
+      </details>
+    </div>
+      <div id="idGroups"></div>
+      <div class="sec-head" style="margin-top:20px"><h2 style="font-size:15px">Authentication flows</h2>
+      <details class="info sub">
+        <summary><span class="i">i</span></summary>
+        <div class="info-body">
+          <p><b>What</b>Each flow and its executions, in order, with the requirement level.</p>
+          <p><b>Why</b>The order and the requirement level are the login policy. <code>Require Existing User First Broker Login</code> detects an existing account and links it, with no step that creates one &mdash; which is how &ldquo;only pre-registered users may log in&rdquo; is enforced mechanically rather than by policy document.</p>
+          <p><b>Look for</b><b>REQUIRED</b> steps, and whether any flow contains a step that would create a user it has not seen before.</p>
+        </div>
+      </details>
+    </div>
+      <div id="idFlows"></div>
+    </div>
+  </section>
+
+  <!-- ============ networks ============ -->
+  <section id="networks">
+    <div class="sec-head">
+      <h2>Networks</h2>
+    </div>
+    <details class="info">
+      <summary><span class="i">i</span> What this is</summary>
+      <div class="info-body">
+        <p><b>What</b>VLANs and switch ports from <code>ansible-switches</code>, joined to CIDRs from the hardware document and Terraform.</p>
+        <p><b>Why</b>A pod is attached only to the cluster network, but the storage array serves NFS and S3 on a separate, faster VLAN. That single fact forces a second network interface on every node, a proxy for object storage, and wider storage subnets — so the physical VLAN table is where an apparently abstract Kubernetes problem becomes a cabling one.</p>
+        <p><b>Look for</b>VLANs carrying real ports but claimed by no declared cluster — including the <code>MOCSEC-*</code> set, which is the NIST environment already wired at the network layer. Also whether a storage VLAN's CIDR matches what Portworx declares; the two are maintained in different repositories.</p>
+      </div>
+    </details>
+    <div id="netWrap">
+      <dl class="tiles" id="netTiles" style="margin-bottom:14px"></dl>
+      <div id="netTable"></div>
+      <div class="sec-head" style="margin-top:22px">
+        <h2 style="font-size:16px">VLANs with no declared cluster</h2>
+      
+      <details class="info sub">
+  <summary><span class="i">i</span></summary>
+  <div class="info-body">
+    <p><b>What</b>VLANs carrying configured switch ports that no cluster in <code>oac-apps</code> claims.</p>
+    <p><b>Why</b>Physical provisioning runs ahead of cluster configuration &mdash; ports and VLANs are cut over before the Git config that uses them exists. So this list is a preview of what is being built next, visible before any cluster declares it.</p>
+    <p><b>Look for</b>The <code>MOCSEC-*</code> set, which is the NIST/HIPAA environment already wired at the network layer, and the OAC staging and dev-workload1 networks.</p>
+  </div>
+</details>
+    </div>
+      <div class="finds" id="netUnclaimed"></div>
+    </div>
+  </section>
+
+  <!-- ============ capacity ============ -->
+  <section id="capacity">
+    <div class="sec-head">
+      <h2>Capacity</h2>
+    </div>
+    <details class="info">
+      <summary><span class="i">i</span> What this is</summary>
+      <div class="info-body">
+        <p><b>What</b>Node pools each workload cluster declares, and the GPU count that implies.</p>
+        <p><b>Why</b>GPUs are the scarce resource and billing is by reservation rather than use, so declared capacity is the number that generates an invoice. The metric that would show real utilisation is unavailable under hosted control planes, so this section deliberately reports what was reserved and says why the other half is missing.</p>
+        <p><b>Look for</b>Segments whose GPU count is unknown, and the note on the missing billing metric — the gap between reserved and used is the open policy question, and it currently cannot be measured.</p>
+      </div>
+    </details>
+    <div class="chartwrap">
+      <h3>Node pools per cluster</h3>
+      <details class="info sub">
+  <summary><span class="i">i</span></summary>
+  <div class="info-body">
+    <p><b>What</b>Each workload cluster&rsquo;s node pools, sized by replica count.</p>
+    <p><b>Why</b>Segment order follows the pools as written in the cluster&rsquo;s values file, so the picture matches the source rather than a sorted view of it.</p>
+    <p><b>Look for</b>Pools whose GPU count is unknown, and the totals at the right.</p>
+  </div>
+</details>
+      <div id="capChart"></div>
+      <div class="legend">
+        <span><b style="background:var(--s3)"></b>CPU pool</span>
+        <span><b style="background:var(--s4)"></b>GPU pool</span>
+      </div>
+    </div>
+    <p class="note" id="capNote"></p>
+  </section>
+
+  <!-- ============ reference ============ -->
+  <section id="reference">
+    <div class="sec-head">
+      <h2>Charts</h2>
+      <div class="spacer"></div>
+    <details class="info">
+      <summary><span class="i">i</span> What this is</summary>
+      <div class="info-body">
+        <p><b>What</b>Every Helm chart in <code>oac-apps</code> and which clusters it deploys to.</p>
+        <p><b>Why</b>There is no ordering between components. Each chart is an independent Argo CD Application that syncs in parallel, fails if its dependencies do not exist yet, and retries until they do. So where a chart lands is decided by an ACM placement label on the cluster, not by a position in a sequence — which is why the useful question is "which clusters match" rather than "what runs first".</p>
+        <p><b>Look for</b>Charts marked <code>not referenced</code>: present in the repository but named by no ApplicationSet, so nothing deploys them.</p>
+      </div>
+    </details>
+      <span class="hint" id="refCount"></span>
+    </div>
+    <div class="filters" style="margin-bottom:12px">
+      <input class="search" id="refSearch" type="search" placeholder="Search charts…" aria-label="Search charts">
+      <div class="filters" id="refChips"></div>
+    </div>
+    <div id="chartTable"></div>
+  </section>
+
+  <p class="foot">
+    Rebuilt daily from
+    <a href="https://github.com/CCI-MOC/oac-apps" target="_blank" rel="noopener">oac-apps</a>,
+    <a href="https://github.com/CCI-MOC/ansible-switches" target="_blank" rel="noopener">ansible-switches</a>,
+    <a href="https://github.com/CCI-MOC/open-accelerator-infra" target="_blank" rel="noopener">open-accelerator-infra</a> and
+    <a href="https://github.com/CCI-MOC/MOC-issues" target="_blank" rel="noopener">MOC-issues</a>.
+  </p>
+</div>
+
+<script src="data/snapshot.js"></script>
+<script src="assets/architecture.js"></script>
+<script src="assets/app.js"></script>
+</body>
+</html>

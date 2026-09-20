@@ -1,0 +1,119 @@
+name: Refresh dashboard
+
+# Rebuilds data/snapshot.js from the two upstream repos and publishes the site.
+# Runs daily; the manual trigger is there for when someone lands a change they
+# want reflected immediately.
+on:
+  schedule:
+    - cron: '17 6 * * *'        # 06:17 UTC daily
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the dashboard
+        uses: actions/checkout@v4
+
+      - name: Check out oac-apps (the cluster configuration)
+        uses: actions/checkout@v4
+        with:
+          repository: CCI-MOC/oac-apps
+          path: .upstream/oac-apps
+          fetch-depth: 1
+          # A public repo needs no token. For a private one, add a PAT with
+          # read access as OAC_APPS_TOKEN and uncomment:
+          # token: ${{ secrets.OAC_APPS_TOKEN }}
+
+      - name: Check out ansible-switches (VLANs and switch ports)
+        uses: actions/checkout@v4
+        with:
+          repository: CCI-MOC/ansible-switches
+          path: .upstream/ansible-switches
+          fetch-depth: 1
+
+      - name: Check out open-accelerator-infra (node inventory and CIDRs)
+        uses: actions/checkout@v4
+        with:
+          repository: CCI-MOC/open-accelerator-infra
+          path: .upstream/open-accelerator-infra
+          fetch-depth: 1
+
+      - name: Check out moc-keycloak (identity configuration)
+        uses: actions/checkout@v4
+        with:
+          repository: CCI-MOC/moc-keycloak
+          path: .upstream/moc-keycloak
+          fetch-depth: 1
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - run: pip install pyyaml
+
+      - name: Build the snapshot
+        env:
+          # The default token can read issues in a public repo. Point this at a
+          # PAT if MOC-issues is private or you hit rate limits.
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          python3 tools/build_snapshot.py \
+            --oac-apps .upstream/oac-apps \
+            --ansible-switches .upstream/ansible-switches \
+            --infra .upstream/open-accelerator-infra \
+            --keycloak .upstream/moc-keycloak \
+            --out data/snapshot.js
+
+      - name: Fail if the snapshot came out empty
+        run: |
+          python3 - <<'PY'
+          import json, re, sys
+          src = open('data/snapshot.js').read()
+          data = json.loads(re.sub(r'^.*?window\.MOC_DATA = ', '', src, flags=re.S).rstrip().rstrip(';'))
+          problems = []
+          if not data['clusters']:            problems.append('no clusters parsed')
+          if not data['charts']:              problems.append('no charts parsed')
+          if not data['issues_weekly']:       problems.append('no issues parsed')
+          if not data.get('network', {}).get('cidrs'):
+              problems.append('no VLAN/CIDR rows parsed')
+          if not (data.get('identity') or {}).get('realm'):
+              problems.append('no keycloak realm parsed')
+          if data['issue_totals']['count'] < 50:
+              problems.append(f"only {data['issue_totals']['count']} issues -- API truncated?")
+          if problems:
+              sys.exit('snapshot looks wrong: ' + '; '.join(problems))
+          print(f"ok: {len(data['clusters'])} clusters, {len(data['charts'])} charts, "
+                f"{data['issue_totals']['count']} issues")
+          PY
+
+      - name: Package the site
+        run: |
+          rm -rf .upstream _site
+          mkdir _site
+          cp -r index.html assets data _site/
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

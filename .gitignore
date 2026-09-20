@@ -1,0 +1,25 @@
+# Upstream checkouts the workflow makes at build time. Never commit these:
+# they are other people's repositories, and a stale copy here would silently
+# out-date the snapshot.
+.upstream/
+
+# Build output assembled by the Pages workflow
+_site/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Editor / OS noise
+.DS_Store
+Thumbs.db
+*.swp
+*~
+.idea/
+.vscode/
+
+# Local scratch
+*.log
+tmp/
