@@ -239,7 +239,24 @@ def fleet(infra):
                     'ipmi': n.get('ipmi'), 'nics': n.get('nics') or None,
                     'purpose': n.get('purpose'), 'flag': n.get('flag'),
                     'cluster': assigned.get(key), 'state': state,
-                    'section': n.get('section')})
+                    'section': n.get('section'), 'in_hardware_doc': True})
+
+    # The hardware document covers the production side only -- rack R4PAC10 plus
+    # the prod A100s and H100s. Machines that are in a cluster but absent from it
+    # would otherwise vanish from the fleet view, making it look prod-only. They
+    # are listed from the Ansible inventory instead, with the fields the document
+    # would have supplied left empty rather than filled in from somewhere else.
+    doc_keys = {k for k in (infra.get('nodes') or {})}
+    for cname, recs in sorted((infra.get('clusters') or {}).items()):
+        for r in recs:
+            nn = (r.get('node_name') or '')
+            if not nn or nn.upper() in doc_keys:
+                continue
+            out.append({'node': nn, 'resource_class': None, 'ipmi': r.get('bmc'),
+                        'nics': None, 'purpose': None, 'flag': None,
+                        'cluster': cname, 'state': 'assigned',
+                        'section': 'not in hardware doc', 'in_hardware_doc': False})
+    out.sort(key=lambda n: (not n['in_hardware_doc'], n['node'] or ''))
     return out
 
 

@@ -860,7 +860,8 @@
       return;
     }
     var counts = f.reduce(function (a, n) { a[n.state] = (a[n.state] || 0) + 1; return a; }, {});
-    [['Machines', f.length, 'in the hardware doc'],
+    var undoc = f.filter(function (n) { return !n.in_hardware_doc; }).length;
+    [['Machines', f.length, (f.length - undoc) + ' documented · ' + undoc + ' inventory only'],
      ['In a cluster', counts.assigned || 0, 'assigned'],
      ['Idle', counts.idle || 0, 'no recorded purpose'],
      ['Unavailable', (counts.broken || 0) + (counts.reserved || 0),
@@ -901,12 +902,13 @@
         if (active && n.state !== active) return false;
         if (!q) return true;
         return ((n.node || '') + ' ' + (n.resource_class || '') + ' ' + (n.cluster || '') + ' ' +
-                (n.purpose || '') + ' ' + (n.flag || '')).toLowerCase().indexOf(q) >= 0;
+                (n.purpose || '') + ' ' + (n.flag || '') + ' ' +
+                (n.in_hardware_doc ? '' : 'inventory only undocumented')).toLowerCase().indexOf(q) >= 0;
       });
       host.innerHTML = '';
       $('#fleetCount').textContent = rows.length + ' of ' + f.length;
       if (!rows.length) { host.appendChild(el('div', 'empty', 'No machines match.')); return; }
-      host.appendChild(table(['Node', 'Class', 'State', 'Cluster', 'NICs', 'BMC', 'Purpose'],
+      host.appendChild(table(['Node', 'Class', 'State', 'Cluster', 'NICs', 'BMC', 'Purpose', 'Source'],
         rows.map(function (n) {
           var nics = n.nics ? Object.keys(n.nics).map(function (k) {
             return k.toUpperCase() + ':' + n.nics[k]; }).join(' ') : null;
@@ -914,7 +916,9 @@
             badge[n.state] || n.state, n.cluster ? code(n.cluster) : '—',
             nics ? code(nics) : '—', n.ipmi ? code(n.ipmi) : '—',
             n.flag ? '<span class="status warn"><i class="g"></i>' + esc(n.flag) + '</span>'
-                   : (n.purpose || '—')];
+                   : (n.purpose || '—'),
+            n.in_hardware_doc ? code('hardware doc')
+              : '<span class="status warn"><i class="g"></i>inventory only</span>'];
         })));
     }
     search.addEventListener('input', draw);

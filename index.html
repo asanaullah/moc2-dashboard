@@ -332,9 +332,9 @@
     <details class="info">
       <summary><span class="i">i</span> What this is</summary>
       <div class="info-body">
-        <p><b>What</b>Every machine listed in the <code>open-accelerator-infra</code> hardware document, with the VLANs its NICs carry, its BMC address, and whether a cluster currently claims it.</p>
+        <p><b>What</b>Every machine either documented in <code>open-accelerator-infra</code>&rsquo;s hardware table or named in its Ansible inventory, with the VLANs its NICs carry, its BMC address, and whether a cluster claims it.</p>
         <p><b>Why</b>The cluster views only show machines that belong to a cluster, which is a minority of the fleet. The rest is the capacity question: how much idle hardware exists, how much is broken, and how much is being held for the RHOSO 18 build. A platform assembled from decommissioned hardware is defined as much by what is unusable as by what is running.</p>
-        <p><b>Look for</b>Machines flagged <b>flagged</b> (boot failures, unreachable BMCs, disk faults) and those <b>reserved</b> for RHOSO 18. Note the document records its own unknowns — three R440s are listed as <code>?? R440-1 ??</code> and are skipped here.</p>
+        <p><b>Look for</b>Machines flagged <b>flagged</b> (boot failures, unreachable BMCs, disk faults) and those <b>reserved</b> for RHOSO 18. Also the <b>inventory only</b> rows: the hardware table documents the production side — rack R4PAC10 plus the prod A100s and H100s — so all eight development machines appear from the inventory alone, with no NIC or resource-class data. That is a gap in the source, not in the parser. The table records its own unknowns too: three R440s are listed as <code>?? R440-1 ??</code> and are skipped.</p>
       </div>
     </details>
     <dl class="tiles" id="fleetTiles" style="margin-bottom:14px"></dl>
