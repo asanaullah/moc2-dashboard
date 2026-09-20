@@ -174,6 +174,6 @@ def merge(clusters, kc):
     for c in clusters:
         for p in c.get('projects') or []:
             for g in p.get('groups') or []:
-                used.add(g)
+                used.add(g['name'] if isinstance(g, dict) else g)
     groups = [{'name': g, 'used_by_a_project': g in used} for g in kc.get('groups') or []]
     return unclaimed, groups

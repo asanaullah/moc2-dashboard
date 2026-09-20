@@ -160,7 +160,7 @@
     var g = n('g');
     svg.appendChild(g);
 
-    var t = D.topology || {};
+    var t = (window.MOC_ANALYSIS || {}).topology || {};
     var sh = D.shared || {};
     var accent = cssVar('--accent');
 

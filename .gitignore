@@ -6,6 +6,11 @@
 # Build output assembled by the Pages workflow
 _site/
 
+# Repo-derived data: regenerated from the source repositories on every workflow
+# run, so the committed copy would only ever be stale. data/analysis.js is NOT
+# ignored -- it is written by a person and is the only copy there is.
+data/snapshot.js
+
 # Python
 __pycache__/
 *.py[cod]

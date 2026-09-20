@@ -71,11 +71,10 @@ jobs:
 
       - run: pip install pyyaml
 
+      # Repo-derived data only. Issue-derived and curated content is in
+      # data/analysis.js, which a person regenerates via ANALYSIS.md and commits;
+      # this job must not touch it.
       - name: Build the snapshot
-        env:
-          # The default token can read issues in a public repo. Point this at a
-          # PAT if MOC-issues is private or you hit rate limits.
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           python3 tools/build_snapshot.py \
             --oac-apps .upstream/oac-apps \
@@ -93,17 +92,16 @@ jobs:
           problems = []
           if not data['clusters']:            problems.append('no clusters parsed')
           if not data['charts']:              problems.append('no charts parsed')
-          if not data['issues_weekly']:       problems.append('no issues parsed')
           if not data.get('network', {}).get('cidrs'):
               problems.append('no VLAN/CIDR rows parsed')
           if not (data.get('identity') or {}).get('realm'):
               problems.append('no keycloak realm parsed')
-          if data['issue_totals']['count'] < 50:
-              problems.append(f"only {data['issue_totals']['count']} issues -- API truncated?")
+          if not data.get('fleet'):
+              problems.append('no hardware inventory parsed')
           if problems:
               sys.exit('snapshot looks wrong: ' + '; '.join(problems))
           print(f"ok: {len(data['clusters'])} clusters, {len(data['charts'])} charts, "
-                f"{data['issue_totals']['count']} issues")
+                f"{len(data['fleet'])} machines, {len(data['network']['cidrs'])} networks")
           PY
 
       - name: Package the site
@@ -111,6 +109,15 @@ jobs:
           rm -rf .upstream _site
           mkdir _site
           cp -r index.html assets data _site/
+          test -f _site/data/analysis.js || echo "::warning::data/analysis.js is missing; \
+            issue-derived sections will render empty. Regenerate it per ANALYSIS.md."
+          # Pages serves assets with a ten-minute max-age, so a returning
+          # viewer can be handed a cached snapshot.js that predates this run.
+          # Stamping the reference means a refreshed index.html always pulls
+          # the data published alongside it.
+          stamp=$(date -u +%Y%m%d%H%M%S)
+          sed -i "s|data/snapshot\.js|data/snapshot.js?v=$stamp|" _site/index.html
+          grep -o 'data/snapshot\.js?v=[0-9]*' _site/index.html
 
       - uses: actions/upload-pages-artifact@v3
         with:

@@ -217,6 +217,32 @@ def parse_infra(root):
     return out
 
 
+def fleet(infra):
+    """Every machine the hardware doc lists, with what it is assigned to.
+
+    The cluster views only show machines that belong to a cluster. Most of the
+    fleet does not: spares, machines held for RHOSO 18, and machines that are
+    broken. That population is the capacity question, so it gets its own view.
+    """
+    assigned = {}
+    for cname, recs in (infra.get('clusters') or {}).items():
+        for r in recs:
+            if r.get('node_name'):
+                assigned[r['node_name'].upper()] = cname
+    out = []
+    for key, n in sorted((infra.get('nodes') or {}).items()):
+        state = ('broken' if (n.get('flag') or '').startswith('*')
+                 else 'reserved' if (n.get('flag') or '').startswith('?')
+                 else 'assigned' if key in assigned
+                 else 'idle')
+        out.append({'node': n.get('node_name'), 'resource_class': n.get('resource_class'),
+                    'ipmi': n.get('ipmi'), 'nics': n.get('nics') or None,
+                    'purpose': n.get('purpose'), 'flag': n.get('flag'),
+                    'cluster': assigned.get(key), 'state': state,
+                    'section': n.get('section')})
+    return out
+
+
 def merge(clusters, sw, infra, oac_storage_cidrs):
     """Attach physical facts to the clusters parsed from oac-apps.
 

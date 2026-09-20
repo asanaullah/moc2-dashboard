@@ -7,10 +7,10 @@ Two parsers:
                  which component lands on which cluster, tenant projects,
                  network-policy tiers, per-hub drop-in apps.
 
-  issue parser   CCI-MOC/MOC-issues             -> RFC board, weekly throughput,
-                 recent activity, open/closed totals.
-                 Reads an API dump (raw_issues.json) if given, otherwise calls
-                 the GitHub API directly.
+Everything here is mechanical extraction from configuration repositories, and
+it is what the scheduled workflow refreshes. Anything that needs a person to
+read the issue tracker and decide what it means lives in
+tools/build_analysis.py instead; see ANALYSIS.md.
 
 What this CANNOT know, and therefore does not claim: live cluster state. It
 reads *declared* configuration from Git, so "nodes" means node-pool replicas as
@@ -19,8 +19,9 @@ metrics stack (pod counts, real GPU availability, billing) is out of scope --
 billing in particular is blocked upstream by MOC-issues#481.
 
 Usage:
-  python3 tools/build_snapshot.py --oac-apps ../oac-apps --issues ../raw_issues.json
-  python3 tools/build_snapshot.py --oac-apps /tmp/oac-apps --github-token "$GH_TOKEN"
+  python3 tools/build_snapshot.py --oac-apps ../oac-apps \
+      --ansible-switches ../ansible-switches --infra ../open-accelerator-infra \
+      --keycloak ../moc-keycloak
 """
 import argparse, datetime, json, os, re, subprocess, sys, collections
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -31,7 +32,6 @@ try:
 except ImportError:
     sys.exit('pyyaml is required: pip install pyyaml')
 
-ISSUES_REPO = 'CCI-MOC/MOC-issues'
 APPS_REPO = 'CCI-MOC/oac-apps'
 
 # Node-pool resource classes map to hardware. GPUs-per-node is a property of the
@@ -109,15 +109,89 @@ def parse_placements(root, hub):
     return res
 
 
+def _merge(base, over):
+    """Shallow-recursive merge of Helm values: later files win."""
+    out = dict(base or {})
+    for k, v in (over or {}).items():
+        out[k] = _merge(out.get(k), v) if isinstance(v, dict) and isinstance(out.get(k), dict) else v
+    return out
+
+
+def effective_values(root, chart, hub, cluster):
+    """Chart defaults, then values/<hub>/<chart>.yaml, then the per-cluster file.
+
+    This is the same layering the ApplicationSets apply, so the namespace and
+    subscription reported here are what actually lands on that cluster rather
+    than the chart's default.
+    """
+    v = load_yaml(os.path.join(root, 'charts', chart, 'values.yaml'))
+    v = _merge(v, load_yaml(os.path.join(root, 'values', hub, chart + '.yaml')))
+    v = _merge(v, load_yaml(os.path.join(root, 'values', hub, cluster, chart + '.yaml')))
+    return v
+
+
+def parse_known_issues(root):
+    """The HyperShift defects the team hit, from oac-apps/docs/hypershift-issues.md.
+
+    Distinct from the curated discoveries list: these are written by the team in
+    their own repository, so they are parsed rather than transcribed.
+    """
+    p = os.path.join(root, 'docs/hypershift-issues.md')
+    if not os.path.exists(p):
+        return []
+    out, cur = [], None
+    for line in open(p):
+        if line.startswith('## '):
+            if cur:
+                out.append(cur)
+            cur = {'title': line[3:].strip(), 'body': ''}
+        elif cur is not None and line.strip():
+            if len(cur['body']) < 400:
+                cur['body'] += (' ' if cur['body'] else '') + line.strip()
+    if cur:
+        out.append(cur)
+    # the doc opens with a priority index, which is not itself a defect
+    return [i for i in out if not i['title'].lower().startswith('issues by')]
+
+
+def chart_catalogue(root):
+    """Namespace and subscription each chart declares, before overrides."""
+    cdir = os.path.join(root, 'charts')
+    out = {}
+    for name in sorted(os.listdir(cdir)) if os.path.isdir(cdir) else []:
+        vp = os.path.join(cdir, name, 'values.yaml')
+        if not os.path.isdir(os.path.join(cdir, name)):
+            continue
+        v = load_yaml(vp)
+        sub = v.get('subscription') or {}
+        out[name] = {
+            'namespace': v.get('namespace'),
+            'subscription': {k: sub.get(k) for k in
+                             ('name', 'channel', 'source', 'installPlanApproval')} if sub else None,
+        }
+    return out
+
+
 def parse_projects(root, hub, cluster):
-    v = load_yaml(os.path.join(root, 'values', hub, cluster, 'user-projects.yaml'))
+    chart_defaults = load_yaml(os.path.join(root, 'charts/user-projects/values.yaml'))
+    v = _merge(chart_defaults,
+               load_yaml(os.path.join(root, 'values', hub, cluster, 'user-projects.yaml')))
+    dq, dl = v.get('defaultQuota'), v.get('defaultLimitRange')
     out = []
     for pr in v.get('projects', []) or []:
+        quota = pr.get('quota') or dq
+        limits = pr.get('limitRange') or dl
         out.append({
             'name': 'project-' + pr['name'],
+            'short_name': pr['name'],
             'requester': pr.get('requester'),
             'description': (pr.get('description') or '').strip(),
-            'groups': [g.get('name') for g in (pr.get('groups') or [])],
+            'groups': [{'name': g.get('name'), 'role': g.get('role')}
+                       for g in (pr.get('groups') or [])],
+            'quota': (quota or {}).get('hard'),
+            'quota_is_default': pr.get('quota') is None,
+            'limits': (limits or {}).get('limits'),
+            'limits_is_default': pr.get('limitRange') is None,
         })
     return out
 
@@ -228,10 +302,66 @@ def parse_dropins(root):
     return out
 
 
+def components_detail(root, hub, cluster, comps, catalogue):
+    """Each deployed chart with the namespace and subscription it lands with."""
+    out = []
+    for c in comps:
+        base = catalogue.get(c) or {}
+        eff = effective_values(root, c, hub, cluster)
+        sub = eff.get('subscription') or base.get('subscription') or None
+        out.append({
+            'chart': c,
+            'namespace': eff.get('namespace') or base.get('namespace'),
+            'operator': (sub or {}).get('name'),
+            'channel': (sub or {}).get('channel'),
+            'source': (sub or {}).get('source'),
+            'approval': (sub or {}).get('installPlanApproval'),
+        })
+    return out
+
+
+def namespace_inventory(cluster_rec, hosted=None):
+    """Every namespace this cluster's own configuration declares.
+
+    Three origins, kept distinct because they are governed differently: tenant
+    projects are tracked in a values file, platform namespaces come from the
+    chart that installs the component, and hosted-control-plane namespaces are
+    created by HyperShift on a hub.
+    """
+    seen, out = set(), []
+
+    def add(name, kind, declared_by, extra=None):
+        if not name or name in seen:
+            return
+        seen.add(name)
+        rec = {'name': name, 'kind': kind, 'declared_by': declared_by}
+        if extra:
+            rec.update(extra)
+        out.append(rec)
+
+    for p in cluster_rec.get('projects') or []:
+        add(p['name'], 'tenant', 'values/.../user-projects.yaml',
+            {'requester': p.get('requester'), 'description': p.get('description'),
+             'groups': [g['name'] for g in p.get('groups') or []]})
+
+    for c in cluster_rec.get('components') or []:
+        if c.get('namespace'):
+            add(c['namespace'], 'platform', 'charts/' + c['chart'],
+                {'operator': c.get('operator')})
+
+    for h in hosted or []:
+        add('clusters-' + h, 'hosted control plane', 'hypershift')
+
+    out.sort(key=lambda n: ({'tenant': 0, 'hosted control plane': 1, 'platform': 2}
+                            .get(n['kind'], 3), n['name']))
+    return out
+
+
 def parse_clusters(root, curated=None):
     """Hubs from hosted-clusters/<hub>/, workload clusters from its subdirs."""
     curated = curated or {}
     complists = parse_component_lists(root)
+    catalogue = chart_catalogue(root)
     dropins = parse_dropins(root)
     policies = parse_policies(root)
     hcdir = os.path.join(root, 'hosted-clusters')
@@ -301,6 +431,9 @@ def parse_clusters(root, curated=None):
                 'gpus_partial': any(p['needs_data'] for p in pools),
                 'nodes_pending_data': sum(p['replicas'] for p in pools if p['needs_data']),
                 'operators': sorted(comps),
+                'components': components_detail(root, hub, name, sorted(comps), catalogue),
+                'rhoai': ((effective_values(root, 'rhoai', hub, name).get('dataScienceCluster')
+                           or {}).get('components') if 'rhoai' in comps else None),
                 'projects': parse_projects(root, hub, name),
                 'policies': policies if any(c == 'restrict-tenant-networks' for c in comps) else [],
                 'idp': idp,
@@ -315,6 +448,7 @@ def parse_clusters(root, curated=None):
             })
             hosted.append(name)
 
+        hub_comps = complists['hub'] + [c for c, hubs in dropins.items() if hub in hubs]
         hn = (curated.get('hub_nodes') or {}).get(hub) or {}
         cp, wk = hn.get('control_plane'), hn.get('workers')
         clusters.append({
@@ -327,8 +461,9 @@ def parse_clusters(root, curated=None):
             'labels': {}, 'nodepools': [],
             'nodes': None if (cp is None and wk is None) else (cp or 0) + (wk or 0),
             'gpu_nodes': 0, 'gpus': 0,
-            'operators': sorted(complists['hub'] +
-                                [c for c, hubs in dropins.items() if hub in hubs]),
+            'operators': sorted(hub_comps),
+            'components': components_detail(root, hub, 'local-cluster', sorted(hub_comps),
+                                            catalogue),
             'projects': [], 'policies': [], 'idp': None,
             'hosts': hosted,
             'endpoints': {'base_domain': hub_defaults.get('hcpExternalDomain'),
@@ -337,6 +472,9 @@ def parse_clusters(root, curated=None):
             'dns': parse_dns(root, hub),
             'source': f'hosted-clusters/{hub}/values.yaml',
         })
+
+    for c in clusters:
+        c['namespaces'] = namespace_inventory(c, c.get('hosts'))
 
     order = {'hub': 0, 'workload': 1}
     clusters.sort(key=lambda c: (c['env'] != 'prod', order[c['kind']], c['name']))
@@ -444,51 +582,13 @@ def parse_issues(issues):
 
 
 # --------------------------------------------------------------------------
-def ground_topology(topo, known_issues):
-    """Drop any diagram block that is not grounded in the repo or the tracker.
-
-    The diagram is meant to be evidence, so a box that cannot cite oac-apps or an
-    issue does not belong on it. Blocks whose connections are not described
-    anywhere keep connections="unknown" and the renderer leaves them unconnected.
-    """
-    def ok(b):
-        if not isinstance(b, dict):
-            return False
-        if b.get('grounding') == 'repo':
-            return True
-        n = b.get('issue')
-        if n in known_issues:
-            return True
-        print(f'  ! dropping ungrounded diagram block {b.get("id") or b.get("label")!r}'
-              f' (no repo grounding, issue={n})', file=sys.stderr)
-        return False
-
-    out = {}
-    for k, v in (topo or {}).items():
-        if k.startswith('_'):
-            out[k] = v
-        elif k == 'datacenter' and isinstance(v, dict):
-            dc = {kk: vv for kk, vv in v.items() if kk not in ('edge', 'storage')}
-            dc['edge'] = [b for b in (v.get('edge') or []) if ok(b)]
-            st = v.get('storage')
-            dc['storage'] = st if (st and ok(st)) else None
-            out[k] = dc
-        elif isinstance(v, list):
-            out[k] = [b for b in v if ok(b)]
-        else:
-            out[k] = v
-    return out
-
-
 def main():
     ap = argparse.ArgumentParser()
     here = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     ap.add_argument('--oac-apps', required=True, help='path to an oac-apps checkout')
-    ap.add_argument('--issues', help='path to a MOC-issues API dump (json)')
     ap.add_argument('--ansible-switches', help='path to an ansible-switches checkout')
     ap.add_argument('--infra', help='path to an open-accelerator-infra checkout')
     ap.add_argument('--keycloak', help='path to a moc-keycloak checkout')
-    ap.add_argument('--github-token', default=os.environ.get('GITHUB_TOKEN'))
     ap.add_argument('--curated', default=os.path.join(here, 'data', 'curated.json'))
     ap.add_argument('--out', default=os.path.join(here, 'data', 'snapshot.js'))
     a = ap.parse_args()
@@ -537,34 +637,13 @@ def main():
             print('  OIDC clients with no cluster in oac-apps: ' +
                   ', '.join(c['cluster_name'] for c in kc_unclaimed))
 
-    print('issue parser :', a.issues or f'GitHub API ({ISSUES_REPO})')
-    if a.issues:
-        raw = json.load(open(a.issues))
-        issues = raw['issues'] if isinstance(raw, dict) and 'issues' in raw else raw
-    else:
-        issues = fetch_issues_api(ISSUES_REPO, a.github_token)
-    iss = parse_issues(issues)
-    print(f"  {iss['totals']['count']} issues, {len(iss['rfcs'])} RFCs, "
-          f"{len(iss['issues_weekly'])} weeks")
 
-    if curated:
-        known = {i['number'] for i in issues}
-        for group in ('decisions', 'discoveries'):
-            for row in curated.get(group, []):
-                if row.get('issue') and row['issue'] not in known:
-                    print(f"  ! curated {group} cites unknown issue #{row['issue']}",
-                          file=sys.stderr)
-        print(f"  curated: {len(curated.get('decisions', []))} decisions, "
-              f"{len(curated.get('discoveries', []))} discoveries")
 
     snapshot = {
         'generated_at': datetime.datetime.now(datetime.timezone.utc)
                         .replace(microsecond=0).isoformat().replace('+00:00', 'Z'),
         'mock': False,
         'sources': {
-            'issues': {'repo': ISSUES_REPO, 'count': iss['totals']['count'],
-                       'window': iss['totals']['window'],
-                       'via': 'api dump' if a.issues else 'github api'},
             'apps': git_meta(a.oac_apps),
         },
         'caveats': {
@@ -585,6 +664,8 @@ def main():
                                   [(c.get('endpoints') or {}).get('api_external'),
                                    (c.get('endpoints') or {}).get('ingress')] if ip}),
         },
+        'known_issues': parse_known_issues(a.oac_apps),
+        'fleet': parse_network.fleet(infra),
         'clusters': clusters,
         'identity': {
             'realm': kc.get('realm'),
@@ -604,29 +685,25 @@ def main():
                                       'switches': sorted({p['switch'] for p in v['untagged'] + v['tagged']})}
                              for k, v in (sw.get('usage') or {}).items()},
             'unclaimed': orphan_vlans,
+            'ports': {str(v): (sw.get('usage') or {}).get(v)
+                      for v in sorted((sw.get('usage') or {}))
+                      if str(((sw.get('vlans') or {}).get(v) or {}).get('name') or '')
+                      .startswith(('OAC', 'MOCSEC'))},
             'bastion': infra.get('bastion'),
         },
         'charts': charts,
         'placements': {h: parse_placements(a.oac_apps, h)
                        for h in {c['hub'] for c in clusters if c['hub']}},
         'policies': policies,
-        'issues_weekly': iss['issues_weekly'],
-        'issues_recent': iss['issues_recent'],
-        'issue_totals': iss['totals'],
-        'issue_labels': iss['labels'],
-        'rfcs': iss['rfcs'],
-        'decisions': curated.get('decisions', []),
-        'discoveries': curated.get('discoveries', []),
-        'timeline': curated.get('timeline', []),
-        'timeline_marker': curated.get('timeline_marker'),
-        'topology': ground_topology(curated.get('topology', {}), {i['number'] for i in issues}),
     }
 
     os.makedirs(os.path.dirname(a.out), exist_ok=True)
     with open(a.out, 'w') as fh:
         fh.write('/* Generated by tools/build_snapshot.py — do not edit by hand.\n'
-                 f'   Generated {snapshot["generated_at"]} from {ISSUES_REPO} '
-                 f'and {APPS_REPO}@{snapshot["sources"]["apps"]["commit"]}. */\n')
+                 f'   Repo-derived data only, generated {snapshot["generated_at"]}\n'
+                 f'   from {APPS_REPO}@{snapshot["sources"]["apps"]["commit"]} and the\n'
+                 '   switch, inventory and identity repositories. Issue-derived and\n'
+                 '   curated content lives in analysis.js; see ANALYSIS.md. */\n')
         fh.write('window.MOC_DATA = ')
         json.dump(snapshot, fh, indent=1, ensure_ascii=False)
         fh.write(';\n')

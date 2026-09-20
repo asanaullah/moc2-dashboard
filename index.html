@@ -27,7 +27,9 @@
       <a href="#governance">Decisions</a>
       <a href="#activity">Activity</a>
       <a href="#discoveries">Discoveries</a>
+      <a href="#projects-sec">Projects</a>
       <a href="#identity">Identity</a>
+      <a href="#fleet-sec">Hardware</a>
       <a href="#networks">Networks</a>
       <a href="#capacity">Capacity</a>
       <a href="#reference">Reference</a>
@@ -35,6 +37,7 @@
     <div class="freshness" title="Last data refresh">
       <span class="dot" id="freshDot"></span>
       <span>updated <b id="genAt">—</b></span>
+      <span id="anAt"></span>
     </div>
     <button class="iconbtn" id="themeBtn" type="button" title="Toggle light / dark">Theme</button>
   </div>
@@ -214,6 +217,36 @@
       </div>
     </details>
     <div class="finds" id="finds"></div>
+
+    <div class="sec-head" style="margin-top:22px">
+      <h2 style="font-size:16px">Known platform defects</h2>
+      <details class="info sub">
+        <summary><span class="i">i</span></summary>
+        <div class="info-body">
+          <p><b>What</b>HyperShift defects the team hit while deploying, parsed from <code>oac-apps/docs/hypershift-issues.md</code>.</p>
+          <p><b>Why</b>These are faults in the platform rather than in the configuration, so they are recorded in the repository by the people who hit them. Keeping them visible turns a repeated debugging session into a checklist, and gives the vendor a reproducible list.</p>
+          <p><b>Look for</b>Defects that touch anything you are about to change — certificates, ingress publishing and agent lifecycle account for most of them.</p>
+        </div>
+      </details>
+    </div>
+    <div class="finds" id="knownIssues"></div>
+  </section>
+
+  <!-- ============ projects ============ -->
+  <section id="projects-sec">
+    <div class="sec-head">
+      <h2>Tenant projects</h2>
+    </div>
+    <details class="info">
+      <summary><span class="i">i</span> What this is</summary>
+      <div class="info-body">
+        <p><b>What</b>Every tenant project across all clusters: who asked for it, what it is for, which groups hold <code>edit</code> on it, and the quota it runs under.</p>
+        <p><b>Why</b>A project is the unit of tenancy — it is a namespace, a quota, a limit range, a network policy and a set of RoleBindings created together by the <code>user-projects</code> chart from one entry in a values file. Because that entry is in Git, who requested a project and why is recorded rather than remembered, which is also what makes the tenancy auditable.</p>
+        <p><b>Look for</b>Projects whose quota is not the chart default, and the difference between the production clusters, where projects are tracked in a values file, and development, where they are created more loosely.</p>
+      </div>
+    </details>
+    <dl class="tiles" id="projectTiles" style="margin-bottom:14px"></dl>
+    <div id="projects"></div>
   </section>
 
   <!-- ============ identity ============ -->
@@ -289,6 +322,29 @@
     </div>
   </section>
 
+  <!-- ============ hardware ============ -->
+  <section id="fleet-sec">
+    <div class="sec-head">
+      <h2>Hardware</h2>
+      <div class="spacer"></div>
+      <span class="hint" id="fleetCount"></span>
+    </div>
+    <details class="info">
+      <summary><span class="i">i</span> What this is</summary>
+      <div class="info-body">
+        <p><b>What</b>Every machine listed in the <code>open-accelerator-infra</code> hardware document, with the VLANs its NICs carry, its BMC address, and whether a cluster currently claims it.</p>
+        <p><b>Why</b>The cluster views only show machines that belong to a cluster, which is a minority of the fleet. The rest is the capacity question: how much idle hardware exists, how much is broken, and how much is being held for the RHOSO 18 build. A platform assembled from decommissioned hardware is defined as much by what is unusable as by what is running.</p>
+        <p><b>Look for</b>Machines flagged <b>flagged</b> (boot failures, unreachable BMCs, disk faults) and those <b>reserved</b> for RHOSO 18. Note the document records its own unknowns — three R440s are listed as <code>?? R440-1 ??</code> and are skipped here.</p>
+      </div>
+    </details>
+    <dl class="tiles" id="fleetTiles" style="margin-bottom:14px"></dl>
+    <div class="filters" style="margin-bottom:12px">
+      <input class="search" id="fleetSearch" type="search" placeholder="Search machines…" aria-label="Search machines">
+      <div class="filters" id="fleetChips"></div>
+    </div>
+    <div id="fleet"></div>
+  </section>
+
   <!-- ============ networks ============ -->
   <section id="networks">
     <div class="sec-head">
@@ -318,6 +374,19 @@
 </details>
     </div>
       <div class="finds" id="netUnclaimed"></div>
+      <div class="sec-head" style="margin-top:22px">
+        <h2 style="font-size:15px">Switches</h2>
+        <p class="hint" id="switchCount"></p>
+        <details class="info sub">
+          <summary><span class="i">i</span></summary>
+          <div class="info-body">
+            <p><b>What</b>Every switch in the <code>ansible-switches</code> inventory, with its management address, network OS and fabric.</p>
+            <p><b>Why</b>Switch configuration is managed as code in the same way cluster configuration is, so the inventory is the authoritative list of what the VLAN assignments are applied to. The fabric column is what decides which VLANs may exist on a switch.</p>
+            <p><b>Look for</b>The <code>mocsecdata</code> and <code>mocsecmgmt</code> fabrics, which belong to the NIST environment rather than to OAC.</p>
+          </div>
+        </details>
+      </div>
+      <div id="switches"></div>
     </div>
   </section>
 
@@ -385,6 +454,7 @@
 </div>
 
 <script src="data/snapshot.js"></script>
+<script src="data/analysis.js"></script>
 <script src="assets/architecture.js"></script>
 <script src="assets/app.js"></script>
 </body>

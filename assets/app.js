@@ -8,6 +8,17 @@
 (function () {
   'use strict';
   var D = window.MOC_DATA;
+  /* Issue-derived and curated content lives in a separate file with its own
+     timestamp, because it is refreshed by a person rather than by the schedule.
+     Every section that reads from it degrades to a notice when it is absent. */
+  var A = window.MOC_ANALYSIS || null;
+  function needAnalysis(hostId, what) {
+    var h = $(hostId);
+    if (!h) return true;
+    h.appendChild(el('div', 'empty',
+      what + ' comes from data/analysis.js, which has not been generated. See ANALYSIS.md.'));
+    return true;
+  }
   var $ = function (s, r) { return (r || document).querySelector(s); };
   var el = function (t, cls, txt) {
     var n = document.createElement(t);
@@ -26,6 +37,19 @@
     return '<a class="iss" target="_blank" rel="noopener" href="' + ISSUE_URL + n + '">#' + n + '</a>';
   }
   function code(s) { return '<code>' + esc(s) + '</code>'; }
+  function kv(obj) {
+    if (!obj) return '—';
+    return Object.keys(obj).map(function (k) {
+      return '<code>' + esc(k) + ' ' + esc(obj[k]) + '</code>';
+    }).join(' ');
+  }
+  function groupList(gs) {
+    return (gs || []).map(function (g) {
+      return typeof g === 'string' ? code(g)
+        : code(g.name) + (g.role ? ' <span class="status idle"><i class="g"></i>' +
+            esc(g.role) + '</span>' : '');
+    }).join(' ');
+  }
 
   /* ---------------- theme ---------------- */
   var THEME_KEY = 'moc.theme';
@@ -141,7 +165,9 @@
       nodes_pending: pending,
       operators: Object.keys(ops).length, charts: D.charts.length,
       tiers: (D.policies || []).length,
-      open: D.issue_totals.open, closed: D.issue_totals.closed
+      open: (A && A.issue_totals) ? A.issue_totals.open : null,
+      closed: (A && A.issue_totals) ? A.issue_totals.closed : null,
+      issue_count: (A && A.issue_totals) ? A.issue_totals.count : null
     };
   }
 
@@ -160,7 +186,8 @@
       ['Components', s.operators, 'distinct charts'],
       ['Charts in repo', s.charts, 'under <code>charts/</code>'],
       ['Isolation tiers', s.tiers, 'per workload cluster'],
-      ['Issues open', s.open, s.closed + ' closed of ' + D.issue_totals.count]
+      ['Issues open', s.open == null ? '—' : s.open,
+        s.open == null ? 'run build_analysis.py' : (s.closed + ' closed of ' + s.issue_count)]
     ].forEach(function (d) {
       var t = el('div', 'tile');
       t.appendChild(el('dt', null, d[0]));
@@ -175,7 +202,7 @@
      topology
      ========================================================= */
   function renderTopology() {
-    var t = D.topology || {}, wrap = $('#topo');
+    var t = A.topology || {}, wrap = $('#topo');
     if (!t.datacenter) { wrap.appendChild(el('div', 'empty', 'No topology data.')); return; }
 
     function zone(title, sub, chips) {
@@ -394,20 +421,68 @@
             code(ep.ingress || '—'), code(ep.base_domain || '—')]]));
       }
 
-      body.appendChild(el('div', 'subhead', 'Components (' + c.operators.length + ')'));
-      var ops = el('div', 'chips');
-      c.operators.forEach(function (o) {
-        var b = el('div', 'chip');
-        b.appendChild(el('div', 't', o));
-        ops.appendChild(b);
-      });
-      body.appendChild(ops);
+      if ((c.namespaces || []).length) {
+        body.appendChild(el('div', 'subhead', 'Namespaces (' + c.namespaces.length + ')'));
+        body.appendChild(table(['Namespace', 'Kind', 'Declared by', 'Detail'],
+          c.namespaces.map(function (n) {
+            var kind = n.kind === 'tenant'
+              ? '<span class="status ok"><i class="g"></i>tenant</span>'
+              : (n.kind === 'hosted control plane'
+                 ? '<span class="status warn"><i class="g"></i>hosted CP</span>'
+                 : '<span class="status idle"><i class="g"></i>platform</span>');
+            var detail = n.kind === 'tenant'
+              ? (n.requester ? code(n.requester) : '') +
+                (n.description ? ' ' + esc(n.description) : '')
+              : (n.operator ? code(n.operator) : '');
+            return [code(n.name), kind, code(n.declared_by), detail];
+          })));
+      }
+
+      var comps = c.components || [];
+      if (comps.length) {
+        body.appendChild(el('div', 'subhead', 'Components (' + comps.length + ')'));
+        body.appendChild(table(['Chart', 'Namespace', 'Operator', 'Channel', 'Catalog', 'Install'],
+          comps.map(function (o) {
+            return [code(o.chart), o.namespace ? code(o.namespace) : '—',
+              o.operator ? code(o.operator) : '<span class="status idle"><i class="g"></i>config only</span>',
+              o.channel ? code(o.channel) : '—', o.source ? code(o.source) : '—',
+              o.approval ? code(o.approval) : '—'];
+          })));
+      }
+
+      if (c.rhoai) {
+        var on = Object.keys(c.rhoai).filter(function (k) { return c.rhoai[k] === 'Managed'; });
+        body.appendChild(el('div', 'subhead',
+          'OpenShift AI components (' + on.length + ' of ' + Object.keys(c.rhoai).length + ' enabled)'));
+        var rc = el('div', 'chips');
+        Object.keys(c.rhoai).sort().forEach(function (k) {
+          var b = el('div', 'chip');
+          b.appendChild(el('div', 't', k));
+          var st = el('div', 's');
+          st.innerHTML = c.rhoai[k] === 'Managed'
+            ? '<span class="status ok"><i class="g"></i>Managed</span>'
+            : '<span class="status idle"><i class="g"></i>Removed</span>';
+          b.appendChild(st);
+          rc.appendChild(b);
+        });
+        body.appendChild(rc);
+      }
 
       if ((c.projects || []).length) {
         body.appendChild(el('div', 'subhead', 'Tenant projects'));
-        body.appendChild(table(['Project', 'Groups', 'What it is'],
+        body.appendChild(table(['Project', 'Requester', 'Purpose', 'Groups', 'Quota', 'Limits'],
           c.projects.map(function (p) {
-            return [code(p.name), p.groups.map(code).join(' '), esc(p.description)];
+            return [code(p.name), p.requester ? code(p.requester) : '—', esc(p.description),
+              groupList(p.groups),
+              kv(p.quota) + (p.quota_is_default
+                ? ' <span class="status idle"><i class="g"></i>chart default</span>' : ''),
+              (p.limits || []).map(function (l) {
+                return code((l.type || '') + ' req ' + ((l.defaultRequest || {}).cpu || '?') +
+                  '/' + ((l.defaultRequest || {}).memory || '?') +
+                  ' max ' + ((l['default'] || {}).cpu || '?') + '/' +
+                  ((l['default'] || {}).memory || '?'));
+              }).join(' ') + (p.limits_is_default
+                ? ' <span class="status idle"><i class="g"></i>chart default</span>' : '')];
           })));
       }
 
@@ -446,9 +521,9 @@
 
   function drawGantt() {
     var host = $('#gantt');
-    if (!host || !(D.timeline || []).length) return;
+    if (!host || !A || !(A.timeline || []).length) return;
     host.innerHTML = '';
-    var rows = D.timeline, W = host.clientWidth || 900;
+    var rows = A.timeline, W = host.clientWidth || 900;
     var padL = Math.min(250, Math.max(140, W * 0.25)), padR = 18, padT = 26, rowH = 21, padB = 44;
     var H = padT + rows.length * rowH + padB;
     var t0 = day('2026-07-06'), t1 = day('2026-09-22');
@@ -467,12 +542,12 @@
     }
     svg.appendChild(g);
 
-    if (D.timeline_marker) {
-      var mx = x(day(D.timeline_marker.date)), red = cssVar('--st-critical');
+    if (A.timeline_marker) {
+      var mx = x(day(A.timeline_marker.date)), red = cssVar('--st-critical');
       svg.appendChild(svgEl('line', { x1: mx, x2: mx, y1: padT - 12, y2: padT + rows.length * rowH + 4,
         stroke: red, 'stroke-width': 1.2, 'stroke-dasharray': '4 3' }));
       var mt = svgEl('text', { x: mx + 5, y: padT - 14, style: 'fill:' + red });
-      mt.textContent = D.timeline_marker.label;
+      mt.textContent = A.timeline_marker.label;
       svg.appendChild(mt);
     }
 
@@ -513,8 +588,9 @@
      ========================================================= */
   function drawIssues() {
     var host = $('#issueChart');
+    if (!A) { host.innerHTML = ''; return; }
     host.innerHTML = '';
-    var data = D.issues_weekly, W = host.clientWidth || 900, H = 260;
+    var data = A.issues_weekly, W = host.clientWidth || 900, H = 260;
     var padL = 38, padR = 12, padT = 14, padB = 40;
     var max = Math.max.apply(null, data.map(function (d) { return Math.max(d.opened, d.closed); }));
     max = Math.max(20, Math.ceil(max / 20) * 20);
@@ -609,9 +685,10 @@
      governance
      ========================================================= */
   function renderGovernance() {
+    if (!A) { needAnalysis('#board', 'The RFC board and decision log'); return; }
     var cols = [['approved', 'Signed off / closed'], ['in-review', 'Under review'], ['open', 'Open question']];
     cols.forEach(function (c) {
-      var items = D.rfcs.filter(function (r) { return r.status === c[0]; });
+      var items = A.rfcs.filter(function (r) { return r.status === c[0]; });
       var col = el('div', 'col ' + c[0]);
       var h = el('h3');
       h.appendChild(document.createTextNode(c[1]));
@@ -634,7 +711,7 @@
 
     $('#decisions').appendChild(table(
       ['Date', 'Decision', 'Area', 'Instead of', 'Why', 'Issue'],
-      D.decisions.slice().sort(function (a, b) { return a.date < b.date ? 1 : -1; })
+      A.decisions.slice().sort(function (a, b) { return a.date < b.date ? 1 : -1; })
         .map(function (d) {
           return [d.date, '<b>' + esc(d.title) + '</b>', esc(d.area), esc(d.rejected),
             esc(d.why || ''), issueLink(d.issue)];
@@ -645,7 +722,8 @@
      discoveries
      ========================================================= */
   function renderDiscoveries() {
-    D.discoveries.forEach(function (f) {
+    if (!A) { needAnalysis('#finds', 'Discoveries'); return; }
+    A.discoveries.forEach(function (f) {
       var c = el('div', 'find ' + f.severity);
       var h = el('div', 'h');
       h.appendChild(el('h3', 't', f.title));
@@ -655,7 +733,20 @@
       s.appendChild(el('i', 'g'));
       s.appendChild(document.createTextNode(badge[1]));
       h.appendChild(s);
-      h.appendChild(el('span', 'meta', f.date + ' · ' + f.found_by));
+      var dr = f.drift || {};
+      if (dr.says_resolved_issue_open || dr.says_open_issue_closed || dr.updated_since_review
+          || dr.missing_issue || dr.never_reviewed) {
+        var w = el('span', 'status warn');
+        w.appendChild(el('i', 'g'));
+        w.appendChild(document.createTextNode(
+          dr.missing_issue ? 'cited issue not found'
+          : dr.says_resolved_issue_open ? 'written up as resolved, issue still open'
+          : dr.says_open_issue_closed ? 'issue closed since review'
+          : dr.never_reviewed ? 'never reviewed' : 'issue updated since review'));
+        h.appendChild(w);
+      }
+      h.appendChild(el('span', 'meta', f.date + ' · ' + f.found_by +
+        (f.reviewed_at ? ' · reviewed ' + f.reviewed_at : '')));
       c.appendChild(h);
       c.appendChild(el('p', 'd', f.detail));
       if (f.issue) {
@@ -711,6 +802,156 @@
     }
     input.addEventListener('input', draw);
     draw();
+  }
+
+  function renderProjects() {
+    var host = $('#projects');
+    if (!host) return;
+    var rows = [];
+    D.clusters.forEach(function (c) {
+      (c.projects || []).forEach(function (p) { rows.push({ c: c, p: p }); });
+    });
+    if (!rows.length) {
+      host.appendChild(el('div', 'empty', 'No tenant projects declared.'));
+      return;
+    }
+    rows.sort(function (a, b) {
+      return (a.c.env === b.c.env) ? a.p.name.localeCompare(b.p.name)
+                                   : (a.c.env === 'prod' ? -1 : 1);
+    });
+    host.appendChild(table(
+      ['Project', 'Cluster', 'Requester', 'Purpose', 'Groups', 'Quota'],
+      rows.map(function (r) {
+        return [
+          '<a class="iss" href="#cluster-' + esc(r.c.name) + '">' + esc(r.p.name) + '</a>',
+          code(r.c.name) + ' <span class="env' + (r.c.env === 'prod' ? ' prod' : '') + '">' +
+            esc(r.c.env) + '</span>',
+          r.p.requester ? code(r.p.requester) : '—',
+          esc(r.p.description || ''),
+          groupList(r.p.groups),
+          kv(r.p.quota) + (r.p.quota_is_default
+            ? ' <span class="status idle"><i class="g"></i>default</span>' : '')
+        ];
+      })));
+
+    var byEnv = { prod: 0, dev: 0 };
+    rows.forEach(function (r) { byEnv[r.c.env] = (byEnv[r.c.env] || 0) + 1; });
+    var overridden = rows.filter(function (r) { return !r.p.quota_is_default; }).length;
+    [['Projects', rows.length, byEnv.prod + ' prod · ' + (byEnv.dev || 0) + ' dev'],
+     ['Requesters', Object.keys(rows.reduce(function (a, r) {
+        if (r.p.requester) a[r.p.requester] = 1; return a; }, {})).length, 'distinct'],
+     ['Custom quotas', overridden, overridden ? 'overriding the chart default' : 'all on the default']
+    ].forEach(function (t) {
+      var d = el('div', 'tile');
+      d.appendChild(el('dt', null, t[0]));
+      d.appendChild(el('dd', null, String(t[1])));
+      d.appendChild(el('div', 'sub', t[2]));
+      $('#projectTiles').appendChild(d);
+    });
+  }
+
+  function renderFleet() {
+    var host = $('#fleet');
+    if (!host) return;
+    var f = D.fleet || [];
+    if (!f.length) {
+      host.appendChild(el('div', 'empty',
+        'No hardware inventory. Pass --infra to the generator.'));
+      return;
+    }
+    var counts = f.reduce(function (a, n) { a[n.state] = (a[n.state] || 0) + 1; return a; }, {});
+    [['Machines', f.length, 'in the hardware doc'],
+     ['In a cluster', counts.assigned || 0, 'assigned'],
+     ['Idle', counts.idle || 0, 'no recorded purpose'],
+     ['Unavailable', (counts.broken || 0) + (counts.reserved || 0),
+      (counts.broken || 0) + ' flagged · ' + (counts.reserved || 0) + ' held for RHOSO 18']]
+      .forEach(function (t) {
+        var d = el('div', 'tile');
+        d.appendChild(el('dt', null, t[0]));
+        d.appendChild(el('dd', null, String(t[1])));
+        d.appendChild(el('div', 'sub', t[2]));
+        $('#fleetTiles').appendChild(d);
+      });
+
+    var badge = {
+      assigned: '<span class="status ok"><i class="g"></i>in a cluster</span>',
+      idle: '<span class="status idle"><i class="g"></i>idle</span>',
+      broken: '<span class="status crit"><i class="g"></i>flagged</span>',
+      reserved: '<span class="status warn"><i class="g"></i>reserved</span>'
+    };
+    var active = null, search = $('#fleetSearch'), chips = $('#fleetChips');
+    ['assigned', 'idle', 'broken', 'reserved'].forEach(function (st) {
+      if (!counts[st]) return;
+      var b = el('button', 'fchip', st + ' (' + counts[st] + ')');
+      b.type = 'button';
+      b.setAttribute('aria-pressed', 'false');
+      b.addEventListener('click', function () {
+        active = (active === st) ? null : st;
+        Array.prototype.forEach.call(chips.children, function (ch) {
+          ch.setAttribute('aria-pressed', String(ch.textContent.indexOf(active + ' ') === 0));
+        });
+        draw();
+      });
+      chips.appendChild(b);
+    });
+
+    function draw() {
+      var q = (search.value || '').toLowerCase().trim();
+      var rows = f.filter(function (n) {
+        if (active && n.state !== active) return false;
+        if (!q) return true;
+        return ((n.node || '') + ' ' + (n.resource_class || '') + ' ' + (n.cluster || '') + ' ' +
+                (n.purpose || '') + ' ' + (n.flag || '')).toLowerCase().indexOf(q) >= 0;
+      });
+      host.innerHTML = '';
+      $('#fleetCount').textContent = rows.length + ' of ' + f.length;
+      if (!rows.length) { host.appendChild(el('div', 'empty', 'No machines match.')); return; }
+      host.appendChild(table(['Node', 'Class', 'State', 'Cluster', 'NICs', 'BMC', 'Purpose'],
+        rows.map(function (n) {
+          var nics = n.nics ? Object.keys(n.nics).map(function (k) {
+            return k.toUpperCase() + ':' + n.nics[k]; }).join(' ') : null;
+          return [code(n.node), n.resource_class ? code(n.resource_class) : '—',
+            badge[n.state] || n.state, n.cluster ? code(n.cluster) : '—',
+            nics ? code(nics) : '—', n.ipmi ? code(n.ipmi) : '—',
+            n.flag ? '<span class="status warn"><i class="g"></i>' + esc(n.flag) + '</span>'
+                   : (n.purpose || '—')];
+        })));
+    }
+    search.addEventListener('input', draw);
+    draw();
+  }
+
+  function renderKnownIssues() {
+    var host = $('#knownIssues');
+    if (!host) return;
+    var ki = D.known_issues || [];
+    if (!ki.length) { host.appendChild(el('div', 'empty', 'None recorded.')); return; }
+    ki.forEach(function (k) {
+      var c = el('div', 'find warning');
+      var h = el('div', 'h');
+      h.appendChild(el('h3', 't', k.title));
+      h.appendChild(el('span', 'meta', 'oac-apps/docs/hypershift-issues.md'));
+      c.appendChild(h);
+      if (k.body) c.appendChild(el('p', 'd', k.body));
+      host.appendChild(c);
+    });
+  }
+
+  function renderSwitches() {
+    var host = $('#switches');
+    if (!host) return;
+    var sw = (D.network || {}).switches || [];
+    if (!sw.length) { host.appendChild(el('div', 'empty', 'No switch inventory.')); return; }
+    var byGroup = {};
+    sw.forEach(function (s2) { byGroup[s2.group] = (byGroup[s2.group] || 0) + 1; });
+    host.appendChild(table(['Switch', 'Management address', 'OS', 'Fabric'],
+      sw.map(function (s2) {
+        return [code(s2.name), code(s2.address),
+          s2.os ? code(s2.os.replace('dellemc.os9.os9', 'Dell OS9')) : '—',
+          code(s2.group)];
+      })));
+    $('#switchCount').textContent = sw.length + ' switches · ' +
+      Object.keys(byGroup).map(function (g) { return g + ' ' + byGroup[g]; }).join(' · ');
   }
 
   function renderIdentity() {
@@ -846,9 +1087,10 @@
   }
 
   function renderRecentIssues() {
+    if (!A) { needAnalysis('#recentIssues', 'Recent issues'); return; }
     $('#recentIssues').appendChild(table(
       ['#', 'Title', 'State', 'Labels', 'Updated'],
-      D.issues_recent.map(function (i) {
+      A.issues_recent.map(function (i) {
         return [issueLink(i.num), esc(i.title),
           i.state === 'open' ? '<span class="status warn"><i class="g"></i>Open</span>'
             : '<span class="status ok"><i class="g"></i>Closed</span>',
@@ -862,24 +1104,44 @@
      ========================================================= */
   function renderHeader() {
     $('#genAt').textContent = D.generated_at.replace('T', ' ').replace('Z', '').slice(0, 16) + ' UTC';
-    var a = D.sources.apps;
-    $('#srcApps').innerHTML = code(a.repo) + ' @ ' + code(a.commit) + ' (' + esc(a.branch) + ')';
-    $('#srcIssues').innerHTML = code(D.sources.issues.repo) + ' · ' +
-      D.sources.issues.count + ' issues, ' + esc(D.sources.issues.window);
+    var a = (D.sources || {}).apps || {};
+    $('#srcApps').innerHTML = code(a.repo || 'oac-apps') + ' @ ' + code(a.commit || '?') +
+      (a.branch ? ' (' + esc(a.branch) + ')' : '');
+    $('#srcIssues').innerHTML = A && A.source
+      ? code(A.source.repo) + ' · ' + A.source.count + ' issues'
+      : '<span class="status warn"><i class="g"></i>no analysis</span>';
+
+    var an = $('#anAt');
+    if (an) {
+      an.innerHTML = A
+        ? 'analysis ' + esc((A.generated_at || '').slice(0, 10)) +
+          (A.needs_review ? ' <span class="status warn"><i class="g"></i>' +
+            A.needs_review + ' to review</span>' : '')
+        : '<span class="status warn"><i class="g"></i>analysis not generated</span>';
+    }
+
     var b = $('#banner');
     if (D.mock) {
       $('#freshDot').classList.add('mock');
-      b.innerHTML = '<span class="ico">●</span><div><b>Mock data.</b> Sample values, not read from the real sources.</div>';
+      b.innerHTML = '<span class="ico">\u25cf</span><div><b>Mock data.</b> Sample values, ' +
+        'not read from the real sources.</div>';
+    } else if (!A) {
+      $('#freshDot').classList.add('mock');
+      b.innerHTML = '<span class="ico">\u25cf</span><div><b>No analysis file.</b> ' +
+        'Repo-derived sections are current; the RFC board, activity, decisions and ' +
+        'discoveries need <code>data/analysis.js</code>. See ANALYSIS.md.</div>';
     } else {
-      b.innerHTML = '<span class="ico">●</span><div><b>Declared configuration, not live cluster state.</b> ' +
-        'Read from Git. GPUs per node come from <code>data/curated.json</code>; ' +
-        'node counts are node-pool replicas.</div>';
+      b.innerHTML = '<span class="ico">\u25cf</span><div>' +
+        '<b>Declared configuration, not live cluster state.</b> Read from Git. ' +
+        'GPUs per node come from <code>data/curated.json</code>; node counts are ' +
+        'node-pool replicas. Issue-derived sections were last reviewed ' +
+        esc((A.generated_at || '').slice(0, 10)) + '.</div>';
     }
-    $('#capNote').innerHTML = esc(D.caveats.billing).replace('#481', issueLink(481));
+
+    var cn = $('#capNote');
+    if (cn && D.caveats) cn.innerHTML = esc(D.caveats.billing).replace('#481', issueLink(481));
   }
 
-  /* section notes: on by default, remembered per viewer */
-  var EXPLAIN_KEY = 'moc.explain';
   function initExplain() {
     var btn = $('#explainBtn');
     if (!btn) return;
@@ -919,6 +1181,10 @@
     renderGovernance();
     renderDiscoveries();
     renderReference();
+    renderProjects();
+    renderFleet();
+    renderKnownIssues();
+    renderSwitches();
     renderIdentity();
     renderNetworks();
     renderRecentIssues();
