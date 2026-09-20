@@ -250,8 +250,12 @@
             1, 1, vlanLine(c, 'cluster'), vlanLine(c, 'storage'), c.idp ? 1 : null]) }));
       });
     });
-    var WL_Y = 268, ST_GAP = 26;
-    var dcH = WL_Y + wlH + ST_GAP + 70;
+    /* a hub can host more than one workload cluster, so the boxes stack */
+    var maxHosted = Math.max(1, Math.max.apply(null, hubs.map(function (h) {
+      return (h.hosts || []).length; })));
+    var WL_Y = 268, WL_GAP = 14, ST_GAP = 26;
+    var stackH = maxHosted * wlH + (maxHosted - 1) * WL_GAP;
+    var dcH = WL_Y + stackH + ST_GAP + 70;
     zone(g, { x: PAD, y: dcY, w: W - PAD * 2, h: dcH,
       label: 'MGHPCC · MOC NETWORKS',
       sub: (t.datacenter && t.datacenter.sub) || '' });
@@ -279,14 +283,15 @@
 
       /* hosted control planes live here — namespace clusters-<name> */
       var hosted = hub.hosts || [];
-      var cpBox = box(g, { x: x + 20, y: dcY + 178, w: COLW - 40, h: 60,
+      var cpBox = box(g, { x: x + 20, y: dcY + 178, w: COLW - 40,
         fill: cssVar('--surface-2'), accent: cssVar('--s1'),
-        kicker: 'HOSTED CONTROL PLANES',
-        title: hosted.map(function (hn) { return 'clusters-' + hn; }).join('  ·  ') || '—',
-        lines: [{ text: 'API server · etcd · scheduler', dim: true }] });
+        kicker: 'HOSTED CONTROL PLANES · ' + hosted.length + ' ON THIS HUB',
+        title: 'API server · etcd · scheduler',
+        lines: hosted.map(function (hn) {
+          return { text: 'clusters-' + hn, mono: true }; }) });
       link(g, hubBox, cpBox, { color: accent, label: 'runs' });
 
-      hosted.forEach(function (name) {
+      hosted.forEach(function (name, hi) {
         var c = D.clusters.filter(function (x2) { return x2.name === name; })[0];
         if (!c) return;
         var cn = c.network || {}, st = cn.storage || {};
@@ -295,7 +300,8 @@
             (p.needs_data ? '  · GPUs ?' : (p.gpus ? '  · ' + p.gpus + ' GPU' : '')),
             mono: true };
         });
-        var wl = box(g, { x: x, y: dcY + WL_Y, w: COLW, h: wlH, accent: cssVar('--s3'),
+        var wl = box(g, { x: x, y: dcY + WL_Y + hi * (wlH + WL_GAP), w: COLW, h: wlH,
+          accent: cssVar('--s3'),
           kicker: 'WORKLOAD CLUSTER',
           title: c.name,
           lines: pools.concat([
@@ -326,7 +332,7 @@
     });
 
     /* ---------- storage ---------- */
-    var stY = dcY + WL_Y + wlH + ST_GAP;
+    var stY = dcY + WL_Y + stackH + ST_GAP;
     var mgmt = (sh.storage_mgmt || [])[0];
     var pure = t.datacenter && t.datacenter.storage;
     if (!pure) return host.appendChild(svg);
