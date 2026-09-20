@@ -8,7 +8,7 @@ The dashboard has two halves with different refresh mechanisms.
 | Built by | `tools/build_snapshot.py` | `tools/build_analysis.py` |
 | Refreshed by | the hourly GitHub Actions workflow | a person, following this document |
 | In git | no, it is a build artifact | **yes, it is the only copy** |
-| Content | clusters, node pools, components, namespaces, projects, VLANs, hardware, identity, charts | RFC board, weekly activity, recent issues, decisions, discoveries, timeline, diagram blocks |
+| Content | clusters, node pools, components, namespaces, projects, VLANs, hardware, identity, charts | RFC board, weekly activity, recent issues, recently updated issues and their summaries, decisions, discoveries, timeline, diagram blocks |
 
 The split exists because the first half is extraction and the second half is
 judgement. A scheduled job can re-read a values file correctly every hour. It
@@ -19,16 +19,17 @@ severity is, or whether the thing it describes is still true.
 
 This was measured rather than assumed. A keyword search of the tracker for
 failure-analysis language (`root cause`, `turns out`, `the problem was`,
-`regression`, `workaround`, and similar) over titles, bodies and all 787
-comments returns 11 issues out of 352. Of the six discoveries currently written
-up, that search finds **one**. Of the eleven it does find, most are not
-discoveries at all — one is about how to split large issues, another is a
-dashboard development task.
+`regression`, `workaround`, and similar) over titles, bodies and all comments
+returns 11 issues out of 352. Of the six discoveries currently written up, that
+search finds **one**. Of the eleven it does find, most are not discoveries at
+all — one is about how to split large issues, another is a dashboard
+development task.
 
 So the detector has poor precision and poor recall at the same time, and
 shipping it would produce a list that looks authoritative and is not. The
-machine does the part it is reliable at — checking that citations resolve and
-reporting when an entry has been overtaken — and a person does the reading.
+machine does the part it is reliable at — selecting which threads have been
+discussed, checking that citations resolve, and reporting when an entry has
+been overtaken — and a person does the reading.
 
 ## What the generator checks for you
 
@@ -50,53 +51,46 @@ is exactly the case for #441 and #491 today.
 
 ## The procedure
 
-### 1. Pull the issues
+### 1. Pull the issues *and the comments*
+
+Both are needed. The issue payload does not contain comments, and most of what
+you are looking for — the argument, the decision, the correction — is in the
+comments rather than the issue body.
+
+Keep the previous dump before overwriting it; step 2 diffs against it.
 
 ```sh
 cd moc2-dashboard
-
-# either: a fresh dump (preferred — it can be diffed and kept)
-python3 - <<'PY'
-import json, urllib.request, os
-issues, page = [], 1
-while True:
-    req = urllib.request.Request(
-        f'https://api.github.com/repos/CCI-MOC/MOC-issues/issues'
-        f'?state=all&per_page=100&page={page}',
-        headers={'Accept': 'application/vnd.github+json',
-                 'User-Agent': 'moc2-dashboard',
-                 **({'Authorization': 'Bearer ' + os.environ['GITHUB_TOKEN']}
-                    if os.environ.get('GITHUB_TOKEN') else {})})
-    batch = json.load(urllib.request.urlopen(req))
-    if not batch: break
-    issues += [i for i in batch if 'pull_request' not in i]
-    if len(batch) < 100: break
-    page += 1
-json.dump({'issues': issues}, open('/tmp/moc-issues.json', 'w'))
-print(len(issues), 'issues')
-PY
-
-# or: straight from the API at build time
-GITHUB_TOKEN=... python3 tools/build_analysis.py
+cp /tmp/moc-issues.json /tmp/moc-issues.prev.json 2>/dev/null || true
+python3 tools/fetch_issues.py --out /tmp/moc-issues.json
 ```
 
-Comments are a separate endpoint and are not in the issue payload. Pull them
-too when doing a full review — most discoveries are described in comments
-rather than in issue bodies.
+`tools/fetch_issues.py` pages through both endpoints and writes
+`{"issues": [...], "comments": [...]}`. Unauthenticated works — the whole fetch
+is about a dozen requests against a limit of 60 an hour — but set
+`GITHUB_TOKEN` if you are iterating.
+
+> **The tracker predates MOC 2.0 by years.** An unfiltered fetch returns issues
+> back to 2021, numbered from #3. A fetch in September 2026 returned 499 issues,
+> of which only 355 were created inside the programme window.
+> `build_analysis.py` therefore filters on `--since`, default `2026-07-01`, and
+> reports both numbers. If a count jumps by a hundred and a half, this is why:
+> it is scope, not activity.
 
 ### 2. See what changed
 
 ```sh
 python3 tools/build_analysis.py --issues /tmp/moc-issues.json
+python3 tools/fetch_issues.py --diff /tmp/moc-issues.prev.json /tmp/moc-issues.json
 ```
 
-Read the summary line. `N need review` is the work list. Then look at what is
-new since the last dump: issues opened or closed, and anything whose
-`updated_at` moved.
+The first prints `N need review`, which is the work list. The second prints new
+issues, state changes and comment growth, so you can read what actually moved
+instead of re-reading everything.
 
 ### 3. Read, and decide
 
-For each flagged entry and each candidate, the questions are:
+For each flagged entry and each changed thread, the questions are:
 
 - **Is it a discovery?** Something was found that was not expected, and it
   changed what the team did. A planned task completing is not a discovery. A
@@ -121,6 +115,12 @@ configuration:
 | "the proxy is only on one cluster" | which clusters get `object-storage-proxy` in the ApplicationSets and placements |
 | "a cluster is being prepared" | `hosted-clusters/`, the Keycloak OIDC clients in `moc-keycloak/main.tf`, and the VLANs in `ansible-switches` |
 | "the node is broken" | the flag column in `open-accelerator-infra/docs/hardware-and-network-configuration.md` |
+| "these GPUs were added" | the node pool in `hosted-clusters/<hub>/<cluster>/values.yaml` |
+
+**Check the branch.** `oac-apps` in the workspace has sat on a feature branch
+before now, thirteen commits behind `main`, which produced a confident claim
+that a cluster did not exist when it did. Generate from `main` unless you have
+a reason not to, and say which branch a claim came from when it matters.
 
 Where a claim cannot be checked against configuration, say so in the entry
 rather than implying it was verified.
@@ -152,6 +152,12 @@ Entry shapes:
   "issue": 51,
   "reviewed_at": "2026-09-20"
 }
+
+// issue_summaries — keyed by issue number as a string
+"463": {
+  "summary": "Where the thread has got to, in a sentence or two.",
+  "reviewed_at": "2026-09-20"
+}
 ```
 
 `reviewed_at` is the load-bearing field. Bump it when you have actually
@@ -162,6 +168,28 @@ The same file also holds `timeline`, `timeline_marker`, `topology` (diagram
 blocks, each needing `grounding: "repo"` or a valid `issue`), plus
 `hardware_profiles` and `hub_nodes`, which are read by the **repo** generator
 rather than this one.
+
+### 5a. Writing the thread summaries
+
+`build_analysis.py` selects the issues for the *Recently updated issues*
+section on its own: any in-scope issue with at least one comment, ordered by
+the date of the most recent one, capped at fifteen. It extracts the comment
+count, the participants and the latest comment verbatim. It does not summarise.
+
+A summary in `issue_summaries` replaces that raw excerpt. An issue with no
+summary still appears, showing the last comment and a **no summary** badge, so
+the gap is visible rather than silently filled.
+
+What makes a good one:
+
+- **State, not history.** "Blocked until the NIST architecture confirms LDAP is
+  in scope" beats "LDAP was discussed at length".
+- **Name the disagreement if there is one.** Several of these threads are
+  someone pushing back, and that is the useful content.
+- **Say when a closure is not an ending.** #283 is closed while the sign-off it
+  records is still being chased; #385 was closed by working around the problem
+  rather than fixing it. Both deserve a reader's attention.
+- **Two sentences at most.** The issue link is right there for the rest.
 
 ### 6. Regenerate and commit
 
@@ -177,19 +205,20 @@ and publishes both halves together.
 
 ## If you are handing this to Claude
 
-Point at this file and give it the issue dump. A workable prompt:
+Point at this file. A workable prompt:
 
-> Follow ANALYSIS.md. Here is a fresh issue dump at `/tmp/moc-issues.json`.
-> Run the drift check, review the flagged entries against the repos in the
-> parent directory, tell me what changed and what you propose to add or amend,
-> then update `data/curated.json` and regenerate `data/analysis.js`.
+> Follow ANALYSIS.md. Pull a fresh dump of issues and comments, diff it against
+> the previous one, run the drift check, and review the flagged entries against
+> the repos in the parent directory. Then tell me what changed, what you propose
+> to add or amend in `decisions` and `discoveries`, and which summaries in
+> `issue_summaries` need rewriting — before you edit anything. Once I agree,
+> update `data/curated.json` and regenerate `data/analysis.js`.
 
 Two expectations worth stating explicitly, because they are the ways this goes
 wrong:
 
 - **Propose before writing.** The curated file is the human-judgement half of
   the dashboard; changes to it should be reviewed, not applied silently.
-- **No invention.** If a claim cannot be traced to an issue or a repository,
-  it does not go in. An entry whose severity or status is a guess is worse than
-  no entry, because the dashboard presents it with the same weight as a checked
-  one.
+- **No invention.** If a claim cannot be traced to an issue or a repository, it
+  does not go in. An entry whose severity or status is a guess is worse than no
+  entry, because the dashboard presents it with the same weight as a checked one.

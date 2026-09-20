@@ -187,7 +187,9 @@
       ['Charts in repo', s.charts, 'under <code>charts/</code>'],
       ['Isolation tiers', s.tiers, 'per workload cluster'],
       ['Issues open', s.open == null ? '—' : s.open,
-        s.open == null ? 'run build_analysis.py' : (s.closed + ' closed of ' + s.issue_count)]
+        s.open == null ? 'run build_analysis.py'
+          : (s.closed + ' closed of ' + s.issue_count +
+             (A.scope ? ' · since ' + A.scope.since : ''))]
     ].forEach(function (d) {
       var t = el('div', 'tile');
       t.appendChild(el('dt', null, d[0]));
@@ -804,6 +806,46 @@
     draw();
   }
 
+  function renderUpdatedIssues() {
+    var host = $('#updatedIssues');
+    if (!host) return;
+    if (!A) { needAnalysis('#updatedIssues', 'Recently updated issues'); return; }
+    var ts = A.updated_issues || [];
+    if (!ts.length) { host.appendChild(el('div', 'empty', 'No discussed issues in scope.')); return; }
+    ts.forEach(function (t) {
+      var c = el('div', 'find ' + (t.state === 'closed' ? 'warning' : 'serious'));
+      c.style.borderLeftColor = t.state === 'closed' ? 'var(--st-good)' : 'var(--s1)';
+      var h = el('div', 'h');
+      var ttl = el('h3', 't');
+      ttl.innerHTML = issueLink(t.num) + ' ' + esc(t.title);
+      h.appendChild(ttl);
+      h.appendChild(el('span', 'status ' + (t.state === 'closed' ? 'ok' : 'warn'),
+        t.state === 'closed' ? 'closed' : 'open'));
+      h.appendChild(el('span', 'meta', t.comments + (t.comments === 1 ? ' comment' : ' comments') +
+        ' · last ' + t.last_comment_at + ' by ' + (t.last_comment_by || '?')));
+      c.appendChild(h);
+
+      var p = el('p', 'd');
+      if (t.summary) {
+        p.textContent = t.summary;
+      } else {
+        p.innerHTML = '<span class="status idle"><i class="g"></i>no summary</span> ' +
+          '<em>' + esc(t.last_comment) + '</em>';
+      }
+      c.appendChild(p);
+
+      var f = el('div');
+      f.style.cssText = 'margin-top:6px;font-size:12px;color:var(--faint)';
+      f.innerHTML = 'opened ' + esc(t.opened) + ' · ' +
+        t.participants.map(function (u) { return '<code>' + esc(u) + '</code>'; }).join(' ') +
+        (t.labels.length ? ' · ' + t.labels.map(function (l) {
+          return '<code>' + esc(l) + '</code>'; }).join(' ') : '') +
+        (t.summary_reviewed ? ' · summary reviewed ' + esc(t.summary_reviewed) : '');
+      c.appendChild(f);
+      host.appendChild(c);
+    });
+  }
+
   function renderProjects() {
     var host = $('#projects');
     if (!host) return;
@@ -1192,6 +1234,7 @@
     renderIdentity();
     renderNetworks();
     renderRecentIssues();
+    renderUpdatedIssues();
     charts.push(drawGantt, drawIssues, drawCapacity);
     if (window.drawArchitecture) charts.push(window.drawArchitecture);
     redrawCharts();

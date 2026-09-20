@@ -26,8 +26,76 @@ Usage:
 """
 import argparse, collections, datetime, json, os, re, sys
 
+# The tracker predates MOC 2.0 by years. Everything here is scoped to the
+# programme window by default so counts stay comparable and the weekly chart
+# does not carry five years of unrelated history.
+DEFAULT_SINCE = '2026-07-01'
+
 ISSUES_REPO = 'CCI-MOC/MOC-issues'
 RFC_RE = re.compile(r'RFC\s*(\d{1,2})\b', re.I)
+EMAIL_RE = re.compile(r'[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}')
+
+
+def fetch_paged(repo, path, token, label):
+    import urllib.request
+    out, page = [], 1
+    while True:
+        sep = '&' if '?' in path else '?'
+        url = f'https://api.github.com/repos/{repo}/{path}{sep}per_page=100&page={page}'
+        req = urllib.request.Request(url, headers={
+            'Accept': 'application/vnd.github+json', 'User-Agent': 'moc2-dashboard',
+            **({'Authorization': 'Bearer ' + token} if token else {})})
+        with urllib.request.urlopen(req, timeout=60) as r:
+            batch = json.load(r)
+        if not batch:
+            break
+        out += batch
+        if len(batch) < 100:
+            break
+        page += 1
+    return out
+
+
+def threads(issues, comments, limit=15):
+    """Issues that have been discussed, most recently commented first.
+
+    The comment count, the participants and the latest comment are extracted;
+    what the thread *means* is not. A one-line summary can be supplied per issue
+    in curated.json under `issue_summaries`, and is shown in preference to the
+    raw excerpt.
+    """
+    by = collections.defaultdict(list)
+    for c in comments:
+        m = re.search(r'/issues/(\d+)$', str(c.get('issue_url', '')))
+        if m:
+            by[int(m.group(1))].append(c)
+    keep = {i['number'] for i in issues}
+    out = []
+    for num, cs in by.items():
+        if num not in keep:
+            continue
+        cs.sort(key=lambda c: c['created_at'])
+        last = cs[-1]
+        issue = next(i for i in issues if i['number'] == num)
+        body = re.sub(r'\s+', ' ', (last.get('body') or '')).strip()
+        # Comment text is incidental free text and occasionally names people by
+        # email. The tracker is public, so this is not a disclosure, but the
+        # dashboard has no reason to re-publish addresses -- the structured
+        # `requester` on a project is where an address is actually the point.
+        body = EMAIL_RE.sub('[email]', body)
+        out.append({
+            'num': num, 'title': issue['title'], 'state': issue['state'],
+            'labels': [l['name'] for l in issue.get('labels', [])],
+            'comments': len(cs),
+            'participants': sorted({(c.get('user') or {}).get('login')
+                                    for c in cs if (c.get('user') or {}).get('login')}),
+            'opened': issue['created_at'][:10],
+            'last_comment_at': last['created_at'][:10],
+            'last_comment_by': (last.get('user') or {}).get('login'),
+            'last_comment': body[:400] + ('…' if len(body) > 400 else ''),
+        })
+    out.sort(key=lambda t: t['last_comment_at'], reverse=True)
+    return out[:limit]
 
 
 def fetch_issues_api(repo, token):
@@ -174,6 +242,8 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--issues', help='path to a MOC-issues API dump (json)')
     ap.add_argument('--github-token', default=os.environ.get('GITHUB_TOKEN'))
+    ap.add_argument('--since', default=DEFAULT_SINCE,
+                    help='only consider issues created on/after this date')
     ap.add_argument('--curated', default=os.path.join(here, 'data', 'curated.json'))
     ap.add_argument('--out', default=os.path.join(here, 'data', 'analysis.js'))
     a = ap.parse_args()
@@ -181,18 +251,26 @@ def main():
     if a.issues:
         raw = json.load(open(a.issues))
         issues = raw['issues'] if isinstance(raw, dict) and 'issues' in raw else raw
+        comments = raw.get('comments', []) if isinstance(raw, dict) else []
         via = 'api dump: ' + os.path.basename(a.issues)
     else:
         issues = fetch_issues_api(ISSUES_REPO, a.github_token)
+        comments = fetch_paged(ISSUES_REPO, 'issues/comments?sort=created&direction=asc',
+                               a.github_token, 'comments')
         via = 'github api'
+    total = len(issues)
+    issues = [i for i in issues if i['created_at'] >= a.since]
     by_number = {i['number']: i for i in issues}
-    print(f'issues: {len(issues)} via {via}')
+    print(f'issues: {len(issues)} in scope (since {a.since}) of {total} via {via}; '
+          f'{len(comments)} comments')
 
     ex = extract(issues)
+    disc = threads(issues, comments)
     print(f"  {len(ex['rfcs'])} RFCs, {len(ex['issues_weekly'])} weeks, "
           f"{ex['issue_totals']['open']} open / {ex['issue_totals']['closed']} closed")
 
     curated = json.load(open(a.curated)) if os.path.exists(a.curated) else {}
+    summaries = curated.get('issue_summaries') or {}
     decisions, d_stale = check_drift(curated.get('decisions', []), by_number, 'decisions')
     discoveries, x_stale = check_drift(curated.get('discoveries', []), by_number, 'discoveries')
     print(f'  curated: {len(decisions)} decisions ({d_stale} need review), '
@@ -203,6 +281,10 @@ def main():
                         .replace(microsecond=0).isoformat().replace('+00:00', 'Z'),
         'source': {'repo': ISSUES_REPO, 'via': via, 'count': len(issues)},
         'needs_review': d_stale + x_stale,
+        'scope': {'since': a.since, 'in_scope': len(issues), 'tracker_total': total},
+        'updated_issues': [dict(t, summary=summaries.get(str(t['num']), {}).get('summary'),
+                                summary_reviewed=summaries.get(str(t['num']), {}).get('reviewed_at'))
+                           for t in disc],
         **ex,
         'decisions': decisions,
         'discoveries': discoveries,
