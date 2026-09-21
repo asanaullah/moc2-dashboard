@@ -43,7 +43,7 @@ def fetch_paged(repo, path, token, label):
         sep = '&' if '?' in path else '?'
         url = f'https://api.github.com/repos/{repo}/{path}{sep}per_page=100&page={page}'
         req = urllib.request.Request(url, headers={
-            'Accept': 'application/vnd.github+json', 'User-Agent': 'moc2-dashboard',
+            'Accept': 'application/vnd.github+json', 'User-Agent': 'moc2-platform',
             **({'Authorization': 'Bearer ' + token} if token else {})})
         with urllib.request.urlopen(req, timeout=60) as r:
             batch = json.load(r)
@@ -106,7 +106,7 @@ def fetch_issues_api(repo, token):
                f'?state=all&per_page=100&page={page}')
         req = urllib.request.Request(url, headers={
             'Accept': 'application/vnd.github+json',
-            'User-Agent': 'moc2-dashboard',
+            'User-Agent': 'moc2-platform',
             **({'Authorization': 'Bearer ' + token} if token else {})})
         with urllib.request.urlopen(req, timeout=60) as r:
             batch = json.load(r)

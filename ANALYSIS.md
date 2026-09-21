@@ -60,7 +60,7 @@ comments rather than the issue body.
 Keep the previous dump before overwriting it; step 2 diffs against it.
 
 ```sh
-cd moc2-dashboard
+cd moc2-platform
 cp /tmp/moc-issues.json /tmp/moc-issues.prev.json 2>/dev/null || true
 python3 tools/fetch_issues.py --out /tmp/moc-issues.json
 ```
