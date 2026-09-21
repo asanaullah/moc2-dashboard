@@ -5,10 +5,12 @@ platform: clusters and their node pools, which components are deployed where,
 tenant projects, network isolation, VLANs, identity configuration, the RFC
 board, decisions taken, discoveries, and capacity.
 
-The page is `index.html` plus a stylesheet, three scripts and one generated data
-file. There is no framework and no build step, so it can be served by GitHub
-Pages or opened directly from disk. A scheduled GitHub Actions workflow
-regenerates the data file once a day.
+The page is `index.html` plus a stylesheet, three scripts and two data files:
+`data/snapshot.js`, generated from the repositories, and `data/analysis.js`,
+generated from the issue tracker and the curated file. There is no framework and
+no build step, so it can be served by GitHub Pages or opened directly from disk.
+A scheduled GitHub Actions workflow regenerates the snapshot every hour; the
+analysis is refreshed by hand (see [ANALYSIS.md](ANALYSIS.md)).
 
 ## Sources
 
@@ -81,27 +83,31 @@ hardware profiles.
 ```sh
 pip install pyyaml
 
-# from local checkouts, using an API dump for issues
+# from local checkouts (check that each is on main first)
 python3 tools/build_snapshot.py \
   --oac-apps ../oac-apps \
   --ansible-switches ../ansible-switches \
   --infra ../open-accelerator-infra \
-  --keycloak ../moc-keycloak \
-  --issues ../raw_issues.json
+  --keycloak ../moc-keycloak
 
-# or cloning the sources and reading issues from the GitHub API
+# or from fresh clones
 for r in oac-apps ansible-switches open-accelerator-infra moc-keycloak; do
   git clone --depth 1 "https://github.com/CCI-MOC/$r" "/tmp/$r"
 done
-GITHUB_TOKEN=... python3 tools/build_snapshot.py \
+python3 tools/build_snapshot.py \
   --oac-apps /tmp/oac-apps \
   --ansible-switches /tmp/ansible-switches \
   --infra /tmp/open-accelerator-infra \
   --keycloak /tmp/moc-keycloak
 ```
 
-Omitting an argument skips that parser; the sections it feeds then report that
-the data is absent rather than failing.
+`--oac-apps` is required. Omitting any other argument skips that parser; the
+sections it feeds then report that the data is absent rather than failing.
+
+`build_snapshot.py` does not read the issue tracker. The RFC board, issue
+activity, decisions and discoveries come from `tools/build_analysis.py`, which
+takes an issues dump (`--issues`) or reads the GitHub API (`--github-token`);
+[ANALYSIS.md](ANALYSIS.md) describes that procedure.
 
 The generator writes `data/snapshot.js` as a `window.MOC_DATA = {...}`
 assignment rather than as JSON loaded at runtime, because a page opened over
@@ -112,8 +118,8 @@ to it.
 
 ## Deploying
 
-`.github/workflows/update.yml` runs daily at 06:17 UTC, on push to `main`, and
-on demand. It checks out the four source repositories, regenerates the snapshot,
+`.github/workflows/update.yml` runs hourly at 17 minutes past the hour, on push
+to `main`, and on demand. It checks out the four source repositories, regenerates the snapshot,
 verifies that clusters, charts, issues, VLAN/CIDR rows and the Keycloak realm
 all parsed, and publishes to GitHub Pages.
 
@@ -131,11 +137,14 @@ index.html                 page structure; all values are rendered by app.js
 assets/style.css           design tokens, light and dark themes, components
 assets/app.js              rendering, and the timeline, issues and capacity charts
 assets/architecture.js     the architecture diagram
-data/snapshot.js           generated — do not edit
+data/snapshot.js           generated from the repositories — do not edit, not in git
+data/analysis.js           generated from issues + curated.json — committed, the only copy
 data/curated.json          decisions, discoveries, timeline, diagram blocks, hardware
-tools/build_snapshot.py    oac-apps and issue parsers, and the top-level join
+tools/build_snapshot.py    oac-apps parser and the top-level join
 tools/parse_network.py     switches, VLANs, CIDRs, node inventory
 tools/parse_identity.py    Keycloak realm, providers, OIDC clients, groups, flows
+tools/build_analysis.py    RFC board, issue activity, curated-entry drift check
+tools/fetch_issues.py      issues + comments dump, and a diff between two dumps
 .github/workflows/update.yml  scheduled rebuild and Pages deployment
 ```
 
