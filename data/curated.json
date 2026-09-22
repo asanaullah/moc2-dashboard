@@ -273,7 +273,7 @@
       "section": "In parallel",
       "label": "NIST scoping and gap analysis",
       "start": "2026-08-09",
-      "end": "2026-09-19"
+      "end": "2026-09-21"
     }
   ],
   "timeline_marker": {
@@ -447,8 +447,40 @@
       "reviewed_at": "2026-09-20"
     },
     "493": {
-      "summary": "Satisfied in practice: tzumainn added MOC-R4PCC04U12 and MOC-R4PCC04U16 to oac-prod-workload0, giving 8 more H100s. The title still reads 4 and 16 because it was written for a single customer request; the extra capacity is buffer.",
-      "reviewed_at": "2026-09-20"
+      "summary": "Closed 9/21: MOC-R4PCC04U12 and MOC-R4PCC04U16 bring oac-prod-workload0 to five H100 nodes (20 GPUs). The closure is not quite an ending — hpdempsey asked afterwards whether the new nodes have been tested with a real workload, and that is unanswered.",
+      "reviewed_at": "2026-09-21"
+    },
+    "373": {
+      "summary": "Rack R4-PA-C10 was cleared of ESI users on 8/12 and the researchers' remaining hardware left in place. joachimweyl asked on 9/21 whether everyone has what they need so the issue can close; no reply yet.",
+      "reviewed_at": "2026-09-21"
+    },
+    "409": {
+      "summary": "knikolla has a rough draft (Google Doc), scoped to software the MOC writes plus the configuration and secrets management standards that also cover externally sourced software — answering hpdempsey's question about which of several SDLCs is meant. Both completion dates have passed.",
+      "reviewed_at": "2026-09-21"
+    },
+    "497": {
+      "summary": "Blocked on access: the report on AWS organization-level monitoring waits for moc-aws PR #34 to grant QuanMPhm permissions, then 2–3 days to finish.",
+      "reviewed_at": "2026-09-21"
+    },
+    "468": {
+      "summary": "The OpenShift Virtualization operator is installed (#506) and memalhot has published component checks for it in open-science-test-cases; the multi-project VM tests in the harness are still to do.",
+      "reviewed_at": "2026-09-21"
+    },
+    "505": {
+      "summary": "hpdempsey has produced a draft onboarding/offboarding/support workflow example and sent it to IS&T to check the level of detail before the September all-hands.",
+      "reviewed_at": "2026-09-21"
+    },
+    "410": {
+      "summary": "knikolla's reading: hosting in AWS us-east-1 is acceptable provided only FedRAMP-authorised services are used — which spawned #508 to enforce that with a service control policy. Not yet confirmed by anyone else, and the second question (can the same IdP serve outside the NIST environment) is left to #413.",
+      "reviewed_at": "2026-09-21"
+    },
+    "413": {
+      "summary": "knikolla's tentative view is that one Keycloak can serve both, isolated by realm (moc and moc-compliance), provided the whole instance is run under the full compliance regime. Explicitly offered as a first reading, not a conclusion.",
+      "reviewed_at": "2026-09-21"
+    },
+    "411": {
+      "summary": "knikolla's tentative answer is yes: CILogon is not FedRAMP, so trusting it pulls it into the boundary and it may not be usable for logging in to CUI clusters. If that holds it cuts against the CILogon federation in the #282 IdP decision; nobody has responded yet.",
+      "reviewed_at": "2026-09-21"
     },
     "53": {
       "summary": "Dormant since July, revived 9/15: the tenant-isolation gap analysis from the ai-ivp review is wanted again, this time to brief the returning Red Hat consultants.",
