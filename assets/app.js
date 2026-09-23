@@ -1148,8 +1148,28 @@
   /* =========================================================
      chrome
      ========================================================= */
+  // Generation times are stored in UTC; show them in Pacific time. en-CA gives
+  // an ISO-style YYYY-MM-DD date, and timeZoneName picks PDT or PST as appropriate.
+  function ptParts(iso) {
+    var p = {};
+    new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'America/Los_Angeles', year: 'numeric', month: '2-digit', day: '2-digit',
+      hour: '2-digit', minute: '2-digit', hourCycle: 'h23', timeZoneName: 'short'
+    }).formatToParts(new Date(iso)).forEach(function (x) { p[x.type] = x.value; });
+    return p;
+  }
+  function ptDate(iso) {
+    if (!iso) return '';
+    var p = ptParts(iso);
+    return p.year + '-' + p.month + '-' + p.day;
+  }
+  function ptDateTime(iso) {
+    var p = ptParts(iso);
+    return ptDate(iso) + ' ' + p.hour + ':' + p.minute + ' ' + p.timeZoneName;
+  }
+
   function renderHeader() {
-    $('#genAt').textContent = D.generated_at.replace('T', ' ').replace('Z', '').slice(0, 16) + ' UTC';
+    $('#genAt').textContent = ptDateTime(D.generated_at);
     var a = (D.sources || {}).apps || {};
     $('#srcApps').innerHTML = code(a.repo || 'oac-apps') + ' @ ' + code(a.commit || '?') +
       (a.branch ? ' (' + esc(a.branch) + ')' : '');
@@ -1160,7 +1180,7 @@
     var an = $('#anAt');
     if (an) {
       an.innerHTML = A
-        ? 'analysis ' + esc((A.generated_at || '').slice(0, 10)) +
+        ? 'analysis ' + esc(ptDate(A.generated_at)) +
           (A.needs_review ? ' <span class="status warn"><i class="g"></i>' +
             A.needs_review + ' to review</span>' : '')
         : '<span class="status warn"><i class="g"></i>analysis not generated</span>';
@@ -1181,7 +1201,7 @@
         '<b>Declared configuration, not live cluster state.</b> Read from Git. ' +
         'GPUs per node come from <code>data/curated.json</code>; node counts are ' +
         'node-pool replicas. Issue-derived sections were last reviewed ' +
-        esc((A.generated_at || '').slice(0, 10)) + '.</div>';
+        esc(ptDate(A.generated_at)) + '.</div>';
     }
 
     var cn = $('#capNote');
