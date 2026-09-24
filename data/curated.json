@@ -143,8 +143,8 @@
       "status": "open",
       "issue": 481,
       "found_by": "Observability rollout",
-      "detail": "kube_pod_resource_request is published only by the kube-scheduler, which under HCP runs on the hub rather than in the cluster. The workload cluster's Prometheus cannot see it, so invoice data is missing. Forces the 4.22 upgrade: dev-workload0 was upgraded on 9/23, prod-infra and prod-workload0 are still to do (#523, #524), and how September gets billed is unanswered.",
-      "reviewed_at": "2026-09-23"
+      "detail": "kube_pod_resource_request is published only by the kube-scheduler, which under HCP runs on the hub rather than in the cluster. The workload cluster's Prometheus cannot see it, so invoice data is missing. naved001 now has two ways of scraping it on the hub working on dev-infra (a custom ServiceMonitor chart, or HyperShift's METRICS_SET=All), both needing small billing-code changes; neither is chosen and September billing is still unanswered.",
+      "reviewed_at": "2026-09-24"
     },
     {
       "date": "2026-09-14",
@@ -190,11 +190,11 @@
       "date": "2026-09-23",
       "title": "NoExecute GPU taints keep OpenShift daemonsets off GPU nodes",
       "severity": "warning",
-      "status": "open",
+      "status": "fixed",
       "issue": 528,
       "found_by": "Operations",
-      "detail": "Many OpenShift components tolerate any NoSchedule taint but not NoExecute, and not all allow custom tolerations. larsks proposes dropping back to NoSchedule, at the cost of a harder switch between container and VM GPU nodes.",
-      "reviewed_at": "2026-09-23"
+      "detail": "Many OpenShift components tolerate any NoSchedule taint but not NoExecute, and not all allow custom tolerations. Resolved over several PRs on 9/23; three daemonsets (ingress-canary, insights-runtime-extractor, px-pure-csi-telemetry) still miss a node, judged not operationally significant.",
+      "reviewed_at": "2026-09-24"
     }
   ],
   "timeline": [
@@ -292,13 +292,19 @@
       "section": "In parallel",
       "label": "NIST scoping and gap analysis",
       "start": "2026-08-09",
-      "end": "2026-09-22"
+      "end": "2026-09-23"
     },
     {
       "section": "Operating",
       "label": "OpenShift 4.22 upgrades",
       "start": "2026-09-22",
       "end": null
+    },
+    {
+      "section": "Operating",
+      "label": "Lenovo A100 cooling maintenance",
+      "start": "2026-09-22",
+      "end": "2026-09-25"
     }
   ],
   "timeline_marker": {
@@ -436,16 +442,16 @@
       "reviewed_at": "2026-09-20"
     },
     "463": {
-      "summary": "Still no definition of what the NIST/HIPAA cluster needs: EldritchJS is catching up and the gap-analysis group met on 9/22 to work it out. The 9/24 date remains unlikely.",
-      "reviewed_at": "2026-09-23"
+      "summary": "Now organised: the ‘800-171 Self-Assessment’ spreadsheet is the tracker, with issues labelled NIST 800-171 and linked from it. EldritchJS covers OpenShift, knikolla Keycloak/AWS, bu-renm the BU InfoSec and compliance side; there is still no definition of the cluster itself.",
+      "reviewed_at": "2026-09-24"
     },
     "495": {
       "summary": "Scope clarified after Heidi questioned static configuration: switches get both a static config (uplinks, VLAN definitions, RoCE) and a dynamic one, with interfaces marked managed left untouched. The driver covers the static half.",
       "reviewed_at": "2026-09-20"
     },
     "310": {
-      "summary": "Long-running hardware thread, 37 comments. Two FC430s handed over at 10.5.1.111/.112; skanthed reports both data NICs down on one and neither NIC MAC visible on the Dell or Cumulus switch side. Access requests still arriving.",
-      "reviewed_at": "2026-09-20"
+      "summary": "hakasapl asked on 9/23 whether this is all set; no answer yet. The last substantive state was two FC430s handed over, with data-NIC problems on one reported by skanthed.",
+      "reviewed_at": "2026-09-24"
     },
     "354": {
       "summary": "Closed 9/17: network testing passed with the new policy. larsks added a chainsaw test suite in oac-apps PR #44, and asanaullah posted the exact allow-intra-namespace NetworkPolicy used.",
@@ -488,8 +494,8 @@
       "reviewed_at": "2026-09-21"
     },
     "468": {
-      "summary": "The OpenShift Virtualization operator is installed (#506) and memalhot has published component checks for it in open-science-test-cases; the multi-project VM tests in the harness are still to do.",
-      "reviewed_at": "2026-09-21"
+      "summary": "EldritchJS has a working manual procedure on the dev cluster: a cirros VM that reaches the internet, resolves DNS and accepts SSH through a port-forward. Folding it into the harness for multiple projects and users is still to do.",
+      "reviewed_at": "2026-09-24"
     },
     "505": {
       "summary": "hpdempsey has produced a draft onboarding/offboarding/support workflow example and sent it to IS&T to check the level of detail before the September all-hands.",
@@ -528,16 +534,16 @@
       "reviewed_at": "2026-09-23"
     },
     "527": {
-      "summary": "EldritchJS and memalhot get a standalone FIPS-enabled cluster (3 FC430 + 2 H100 for about two weeks) to explore what the compliance and StackRox operators do and don't cover. hpdempsey chose standalone over hosted because the exploration will finish before the NIST/HIPAA environment is defined; it is charged by use, and approvals and the $ amount are still outstanding.",
-      "reviewed_at": "2026-09-23"
+      "summary": "Blocked on the charge question: hpdempsey says Red Hat pays nothing but MOC pays Lenovo for the H100s, and is waiting on Kim before anything is built. tzumainn proposes building on ESI nodes and warns FIPS installation needs extra investigation; EldritchJS will try to stay under 50 H100 hours but won't commit.",
+      "reviewed_at": "2026-09-24"
     },
     "518": {
       "summary": "msdisme has drafted answers: two weeks' notice for scheduled outages, osTicket acknowledgement within one business day, M–F 9–5 EDT excluding BU holidays. Still open: who sends outage notices, how to reach customers (joachimweyl counts 3, 4 and 2 contacts for Accelidea, Noah Labs and White Room), actual turnaround times from engineering, and the severity/RCA terms joachimweyl added.",
       "reviewed_at": "2026-09-23"
     },
     "528": {
-      "summary": "larsks wants to downgrade the GPU nodes' NoExecute taints to NoSchedule, because many OpenShift daemonsets tolerate any NoSchedule taint but not NoExecute. The cost is a more involved switch between container and VM use of a GPU node; no one has responded yet.",
-      "reviewed_at": "2026-09-23"
+      "summary": "Closed 9/23 after several PRs: only ingress-canary, insights-runtime-extractor and px-pure-csi-telemetry still miss a GPU node, which larsks judges not operationally significant.",
+      "reviewed_at": "2026-09-24"
     },
     "304": {
       "summary": "Closed with the answer: 10 FlashBlade blades of 4 DFMs each, able to lose a whole blade plus one more DFM without data loss. The redundancy level cannot be changed.",
@@ -552,8 +558,8 @@
       "reviewed_at": "2026-09-23"
     },
     "481": {
-      "summary": "The fix depends on the 4.22 upgrades: dev-workload0 is done (#526), prod-infra and prod-workload0 are not (#523, #524). joachimweyl is asking what else is needed and, pointedly, how September gets billed — no answer yet.",
-      "reviewed_at": "2026-09-23"
+      "summary": "Prod-workload0 is now on 4.22 (#524), but naved001 has shown the metric can be scraped on the hub instead, with a custom ServiceMonitor or HyperShift's METRICS_SET=All, both running on dev-infra. Neither option is picked, both need billing-code changes, and how September is billed is still unanswered.",
+      "reviewed_at": "2026-09-24"
     },
     "467": {
       "summary": "Closed 9/22: the object storage proxy is deployed on the prod infra cluster.",
@@ -570,6 +576,22 @@
     "514": {
       "summary": "Disagreement over where backups go: computate suggested MOC's Pure COSI object storage; knikolla doesn't want backups relying on on-prem infrastructure and proposed Backblaze B2 for now. computate has found the bucket definitions in moc-aws/b2/buckets.tf; encryption will follow Crunchy Postgres's documented setup.",
       "reviewed_at": "2026-09-23"
+    },
+    "534": {
+      "summary": "VM OS-image PVCs on oac-prod-workload0 sit Pending on pure-fb-nfsv4 because they request volumeMode: Block. naved001 found such a PVC will bind on the NFS class but cannot be mounted; the cause and fix are still open.",
+      "reviewed_at": "2026-09-24"
+    },
+    "524": {
+      "summary": "Closed 9/23: oac-prod-workload0 is on 4.22, done while it had no user workloads. oac-prod-infra (#523) has not been upgraded yet.",
+      "reviewed_at": "2026-09-24"
+    },
+    "529": {
+      "summary": "Lenovo cleaning the water loop took all A100 nodes out from 9/22 at very short notice; they were expected back at 5 PM on 9/23, with Lenovo verifying on site on 9/24. Guidelines have been set to avoid a repeat of the late notice.",
+      "reviewed_at": "2026-09-24"
+    },
+    "530": {
+      "summary": "Done 9/23: larsks set up asago-eval on oac-dev-workload0 (no VPN needed) and khus-hi starts on CPUs only. The A100 comes later under #531, and how to charge a BU student project is with the business manager.",
+      "reviewed_at": "2026-09-24"
     }
   }
 }
