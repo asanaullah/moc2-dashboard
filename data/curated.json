@@ -14,7 +14,7 @@
       "rejected": "A dedicated control plane per cluster",
       "issue": 391,
       "why": "Hardware efficiency and fast cluster creation; the hub becomes the critical control point",
-      "reviewed_at": "2026-09-20"
+      "reviewed_at": "2026-09-25"
     },
     {
       "date": "2026-07-27",
@@ -123,6 +123,15 @@
       "issue": 215,
       "why": "The free Portworx px-csi has no CRD-based way to manage buckets; start with an in-house COSI driver, then the vendor's",
       "reviewed_at": "2026-09-23"
+    },
+    {
+      "date": "2026-09-24",
+      "title": "Kubeflow training operator managed by RHOAI through oac-apps",
+      "area": "Configuration",
+      "rejected": "The untracked script install made to meet the Sept 1 deadline",
+      "issue": 445,
+      "why": "Puts the operator under RHOAI and Git on both workload clusters; the custom prod install was removed on 9/24",
+      "reviewed_at": "2026-09-25"
     }
   ],
   "discoveries": [
@@ -143,8 +152,8 @@
       "status": "open",
       "issue": 481,
       "found_by": "Observability rollout",
-      "detail": "kube_pod_resource_request is published only by the kube-scheduler, which under HCP runs on the hub rather than in the cluster. The workload cluster's Prometheus cannot see it, so invoice data is missing. naved001 now has two ways of scraping it on the hub working on dev-infra (a custom ServiceMonitor chart, or HyperShift's METRICS_SET=All), both needing small billing-code changes; neither is chosen and September billing is still unanswered.",
-      "reviewed_at": "2026-09-24"
+      "detail": "kube_pod_resource_request is published only by the kube-scheduler, which under HCP runs on the hub rather than in the cluster. The workload cluster's Prometheus cannot see it, so invoice data is missing. All OAC clusters reached 4.22 on 9/24, and naved001 has two hub-side scraping options running on dev-infra (a custom ServiceMonitor chart, or HyperShift's METRICS_SET=All); neither is chosen and September billing is still unanswered.",
+      "reviewed_at": "2026-09-25"
     },
     {
       "date": "2026-09-14",
@@ -195,6 +204,16 @@
       "found_by": "Operations",
       "detail": "Many OpenShift components tolerate any NoSchedule taint but not NoExecute, and not all allow custom tolerations. Resolved over several PRs on 9/23; three daemonsets (ingress-canary, insights-runtime-extractor, px-pure-csi-telemetry) still miss a node, judged not operationally significant.",
       "reviewed_at": "2026-09-24"
+    },
+    {
+      "date": "2026-09-23",
+      "title": "VM image volumes request Block mode on NFS storage",
+      "severity": "warning",
+      "status": "open",
+      "issue": 534,
+      "found_by": "Operations",
+      "detail": "OpenShift Virtualization's OS-image PVCs asked for volumeMode: Block on pure-fb-nfsv4, so they sat Pending, and a Block PVC that does bind cannot be mounted. Setting the storage profile to Filesystem fixed it on dev-workload0; prod-workload0, where it was found, is not yet reported fixed.",
+      "reviewed_at": "2026-09-25"
     }
   ],
   "timeline": [
@@ -286,19 +305,19 @@
       "section": "In parallel",
       "label": "RHOSO 18 (not yet in production)",
       "start": "2026-07-27",
-      "end": "2026-09-19"
+      "end": "2026-09-24"
     },
     {
       "section": "In parallel",
       "label": "NIST scoping and gap analysis",
       "start": "2026-08-09",
-      "end": "2026-09-23"
+      "end": "2026-09-25"
     },
     {
       "section": "Operating",
       "label": "OpenShift 4.22 upgrades",
       "start": "2026-09-22",
-      "end": null
+      "end": "2026-09-24"
     },
     {
       "section": "Operating",
@@ -442,16 +461,16 @@
       "reviewed_at": "2026-09-20"
     },
     "463": {
-      "summary": "Now organised: the ‘800-171 Self-Assessment’ spreadsheet is the tracker, with issues labelled NIST 800-171 and linked from it. EldritchJS covers OpenShift, knikolla Keycloak/AWS, bu-renm the BU InfoSec and compliance side; there is still no definition of the cluster itself.",
-      "reviewed_at": "2026-09-24"
+      "summary": "hpdempsey is pushing back: the 800-171 spreadsheet is not the outline she asked for, and she wants the gaps grouped by system component (e.g. logging and telemetry retention, user and project onboarding) with high-level findings per area by Wednesday. bu-renm agrees with grouping by system and says the prioritised gaps are being worked through alongside the NIST survey.",
+      "reviewed_at": "2026-09-25"
     },
     "495": {
       "summary": "Scope clarified after Heidi questioned static configuration: switches get both a static config (uplinks, VLAN definitions, RoCE) and a dynamic one, with interfaces marked managed left untouched. The driver covers the static half.",
       "reviewed_at": "2026-09-20"
     },
     "310": {
-      "summary": "hakasapl asked on 9/23 whether this is all set; no answer yet. The last substantive state was two FC430s handed over, with data-NIC problems on one reported by skanthed.",
-      "reviewed_at": "2026-09-24"
+      "summary": "Closed 9/24 as all set, but not cleanly: the 10.5.1.111 machine then failed to power on (suspected CMOS battery). ajamias is using 10.5.1.15 meanwhile and skanthed is following up with Hakan.",
+      "reviewed_at": "2026-09-25"
     },
     "354": {
       "summary": "Closed 9/17: network testing passed with the new policy. larsks added a chainsaw test suite in oac-apps PR #44, and asanaullah posted the exact allow-intra-namespace NetworkPolicy used.",
@@ -534,8 +553,8 @@
       "reviewed_at": "2026-09-23"
     },
     "527": {
-      "summary": "Blocked on the charge question: hpdempsey says Red Hat pays nothing but MOC pays Lenovo for the H100s, and is waiting on Kim before anything is built. tzumainn proposes building on ESI nodes and warns FIPS installation needs extra investigation; EldritchJS will try to stay under 50 H100 hours but won't commit.",
-      "reviewed_at": "2026-09-24"
+      "summary": "Unblocked on cost: the H100 time needs no further approval under $75 (50 hours at $1.50), and joachimweyl says to proceed assuming it stays under that. The build itself, on ESI nodes, has not been reported started.",
+      "reviewed_at": "2026-09-25"
     },
     "518": {
       "summary": "msdisme has drafted answers: two weeks' notice for scheduled outages, osTicket acknowledgement within one business day, M–F 9–5 EDT excluding BU holidays. Still open: who sends outage notices, how to reach customers (joachimweyl counts 3, 4 and 2 contacts for Accelidea, Noah Labs and White Room), actual turnaround times from engineering, and the severity/RCA terms joachimweyl added.",
@@ -558,8 +577,8 @@
       "reviewed_at": "2026-09-23"
     },
     "481": {
-      "summary": "Prod-workload0 is now on 4.22 (#524), but naved001 has shown the metric can be scraped on the hub instead, with a custom ServiceMonitor or HyperShift's METRICS_SET=All, both running on dev-infra. Neither option is picked, both need billing-code changes, and how September is billed is still unanswered.",
-      "reviewed_at": "2026-09-24"
+      "summary": "Every OAC cluster is now on 4.22 (prod-infra finished 9/24), and naved001 has two hub-side ways of scraping the metric running on dev-infra. naved001 has handed the choice to larsks; how September gets billed is still unanswered.",
+      "reviewed_at": "2026-09-25"
     },
     "467": {
       "summary": "Closed 9/22: the object storage proxy is deployed on the prod infra cluster.",
@@ -578,8 +597,8 @@
       "reviewed_at": "2026-09-23"
     },
     "534": {
-      "summary": "VM OS-image PVCs on oac-prod-workload0 sit Pending on pure-fb-nfsv4 because they request volumeMode: Block. naved001 found such a PVC will bind on the NFS class but cannot be mounted; the cause and fix are still open.",
-      "reviewed_at": "2026-09-24"
+      "summary": "Cause found: the VM image PVCs asked for Block mode, which the NFS class can't mount. Setting the pure-fb-nfsv4 storage profile to Filesystem fixed it on dev-workload0; prod-workload0, where it was found, is not reported yet.",
+      "reviewed_at": "2026-09-25"
     },
     "524": {
       "summary": "Closed 9/23: oac-prod-workload0 is on 4.22, done while it had no user workloads. oac-prod-infra (#523) has not been upgraded yet.",
@@ -590,8 +609,36 @@
       "reviewed_at": "2026-09-24"
     },
     "530": {
-      "summary": "Done 9/23: larsks set up asago-eval on oac-dev-workload0 (no VPN needed) and khus-hi starts on CPUs only. The A100 comes later under #531, and how to charge a BU student project is with the business manager.",
-      "reviewed_at": "2026-09-24"
+      "summary": "Closed 9/24: khus-hi has access to asago-eval on oac-dev-workload0. The A100 is tracked separately in #531.",
+      "reviewed_at": "2026-09-25"
+    },
+    "462": {
+      "summary": "hpdempsey needs every gap-analysis result linked here by 9/25 for next week's all-hands, believing the work is nearly done but undocumented. So far only tzumainn has pointed to his part, oac-apps' architecture-and-deployment docs.",
+      "reviewed_at": "2026-09-25"
+    },
+    "364": {
+      "summary": "OpenShift 4.18.41 is up on the new RHOSO18 hardware after every node needed firmware/BIOS updates and the older iDRACs needed Redfish virtual-media configuration. Next step is the RHOSO/OpenStack deployment itself.",
+      "reviewed_at": "2026-09-25"
+    },
+    "445": {
+      "summary": "Agreed on 9/24 to replace the untracked, script-installed training operator on prod with RHOAI's own component (trainingoperator: Managed in oac-apps) on both workload clusters. The custom prod install has been removed; the oac-apps change to enable it on prod is not reported yet.",
+      "reviewed_at": "2026-09-25"
+    },
+    "414": {
+      "summary": "Closed 9/24: the issue now lists the RHOSO18 control-plane and networker nodes, jump host and switches, and all networking is configured for the current deployment.",
+      "reviewed_at": "2026-09-25"
+    },
+    "316": {
+      "summary": "Closed 9/24: Hakan assigned new RHOSO18 hardware from the storage pool, and installation has started (see #364).",
+      "reviewed_at": "2026-09-25"
+    },
+    "535": {
+      "summary": "Because OAC skipped ColdFront, projects may have no resource or storage quotas, which risks users claiming more than the OAC budget covers. hpdempsey points to the MOC 1.0 service-unit definition as a starting point and notes VMs are not covered by it.",
+      "reviewed_at": "2026-09-25"
+    },
+    "523": {
+      "summary": "Closed 9/24: oac-prod-infra is on 4.22 and running normally, completing the OAC upgrade to 4.22.",
+      "reviewed_at": "2026-09-25"
     }
   }
 }
